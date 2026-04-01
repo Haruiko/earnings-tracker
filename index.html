@@ -90,7 +90,7 @@
         <select id="fCategory" onchange="onCategoryChange()"><option value="">&#x2014; Select Type First &#x2014;</option></select></div>
       <div class="form-group" id="fPaymentWrap"><label for="fPayment">Payment Method</label>
         <select id="fPayment" onchange="onPaymentMethodChange()"><option value="">&#x2014; Select &#x2014;</option>
-          <option>Cash</option><option>BDO Credit Card</option><option>BDO Debit Card</option><option>AMEX Credit Card</option><option>GCash</option><option>Maya</option><option>Bank Transfer</option><option>Metrobank</option><option>BPI</option><option>UnionBank</option><option>RCBC</option><option>ShopeePay</option><option>Other</option>
+          <option>Cash</option><option>Credit Card</option><option>GCash</option><option>Maya</option><option>ShopeePay</option><option>Bank Transfer</option><option>Other</option>
         </select></div>
       <div class="form-group" id="fPaidByWrap"><label for="fPaidBy">Paid by</label><select id="fPaidBy"><option value="">&#x2014; Select &#x2014;</option></select></div>
       <div class="form-group" id="fFromAccountWrap" style="display:none"><label id="fFromAccountLabel" for="fFromAccount">From Account</label><select id="fFromAccount"><option value="">&#x2014; Select &#x2014;</option></select></div>
@@ -151,7 +151,7 @@
     <div class="form-grid">
       <div class="form-group"><label>Account Name *</label><input type="text" id="aName" placeholder="e.g. BDO Savings, GCash" /></div>
       <div class="form-group"><label>Account Type</label>
-        <select id="aType"><option>Bank Account</option><option>E-Wallet</option><option>Cash</option><option>Savings</option><option>Investment</option><option>Other</option></select></div>
+        <select id="aType"><option>Bank Account</option><option>E-Wallet</option><option>Cash on Hand</option><option>Savings</option><option>Investment</option><option>Other</option></select></div>
       <div class="form-group"><label>Current Balance (&#x20B1;) *</label><input type="number" id="aBalance" min="0" step="0.01" placeholder="0.00" /></div>
       <div class="form-group"><label>Notes</label><input type="text" id="aNotes" placeholder="Optional" /></div>
     </div>
@@ -253,6 +253,7 @@
       <div class="form-group"><label>Target Amount (&#x20B1;) *</label><input type="number" id="gTarget" min="0" step="0.01" placeholder="0.00" /></div>
       <div class="form-group"><label>Amount Already Saved (&#x20B1;)</label><input type="number" id="gSaved" min="0" step="0.01" placeholder="0.00" /></div>
       <div class="form-group"><label>Monthly Contribution (&#x20B1;)</label><input type="number" id="gMonthly" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Linked Account <span style="color:var(--text-muted);font-weight:400;font-size:.72rem">(optional)</span></label><select id="gAccount"><option value="">&#x2014; None &#x2014;</option></select></div>
       <div class="form-group full"><label>Notes</label><input type="text" id="gNotes" placeholder="Optional" /></div>
     </div>
     <div class="form-actions"><button class="btn btn-primary" onclick="addGoal()">+ Add Goal</button></div>
@@ -353,13 +354,35 @@
     <div class="form-grid" style="margin-top:14px">
       <div class="form-group full"><label>Account Name *</label><input type="text" id="eaName" placeholder="e.g. BDO Savings" /></div>
       <div class="form-group"><label>Type</label>
-        <select id="eaType"><option>Bank Account</option><option>E-Wallet</option><option>Cash</option><option>Savings</option><option>Investment</option><option>Other</option></select></div>
+        <select id="eaType"><option>Bank Account</option><option>E-Wallet</option><option>Cash on Hand</option><option>Savings</option><option>Investment</option><option>Other</option></select></div>
       <div class="form-group"><label>Current Balance (&#x20B1;)</label><input type="number" id="eaBalance" min="0" step="0.01" placeholder="0.00" /></div>
       <div class="form-group full"><label>Notes</label><input type="text" id="eaNotes" placeholder="Optional" /></div>
     </div>
     <div class="form-actions" style="margin-top:16px">
       <button class="btn btn-primary" onclick="saveEditAccount()">Save Changes</button>
       <button class="btn btn-ghost" onclick="closeModal('editAccountModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT BILL MODAL -->
+<div class="modal-overlay hidden" id="editBillModal">
+  <div class="modal" style="max-width:520px;width:100%">
+    <h2>Edit Bill</h2>
+    <div class="form-grid" style="margin-top:14px">
+      <div class="form-group full"><label>Bill Name *</label><input type="text" id="ebName" placeholder="e.g. BATELEC, Converge" /></div>
+      <div class="form-group"><label>Category</label>
+        <select id="ebCategory"><option>Utilities</option><option>Internet</option><option>Water</option><option>Rent</option><option>Loan / Installment</option><option>Subscription</option><option>Other</option></select></div>
+      <div class="form-group"><label>Amount (&#x20B1;) *</label><input type="number" id="ebAmount" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Due Date</label>
+        <select id="ebDueDay"><option value="">&#x2014; Select &#x2014;</option><option value="15">15th (Mid-month)</option><option value="0">End of Month</option></select></div>
+      <div class="form-group"><label>Payment Method</label>
+        <select id="ebPayment"><option value="">&#x2014; Select &#x2014;</option><option>Cash</option><option>BDO Online</option><option>AMEX Credit Card</option><option>GCash</option><option>Maya</option><option>Bank Transfer</option><option>Auto-debit</option><option>Other</option></select></div>
+      <div class="form-group full"><label>Notes</label><input type="text" id="ebNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-primary" onclick="saveEditBill()">Save Changes</button>
+      <button class="btn btn-ghost" onclick="closeModal('editBillModal')">Cancel</button>
     </div>
   </div>
 </div>

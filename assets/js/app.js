@@ -220,7 +220,7 @@ async function populatePaidBySelect() {
 
 // ── TRANSACTIONS ──
 var INCOME_CATS  = ['Salary','Freelance','Business','Investment','Interest Gained','Gift','Refund','Other Income'];
-var EXPENSE_CATS = ['Food & Dining','Bills & Utilities','Transportation','Shopping','Entertainment','Health & Medical','Education','Rent','Groceries','Government','Subscriptions','Interest Withheld','Other Expense'];
+var EXPENSE_CATS = ['Food & Dining','Bills & Utilities','Transportation','Shopping','Entertainment','Health & Medical','Education','Rent','Groceries','Government','Subscriptions','Debt Payment','Interest Withheld','Other Expense'];
 var NO_PAYMENT_CATS = ['Interest Gained','Interest Withheld'];
 
 // ── SAVED DESCRIPTIONS ──
@@ -387,28 +387,56 @@ function onPaymentMethodChange() {
   var paidByWrap = document.getElementById('fPaidByWrap');
   var wrap = document.getElementById('fFromAccountWrap');
   var sel  = document.getElementById('fFromAccount');
-  var bankMethods = ['Bank Transfer', 'BDO Debit Card', 'Metrobank', 'BPI', 'UnionBank', 'RCBC'];
-  var isBank = bankMethods.indexOf(payment) !== -1;
+  var fromLabel = document.getElementById('fFromAccountLabel');
   if (type === 'Income') {
-    // For income, always show Paid By regardless of payment method
     if (paidByWrap) paidByWrap.style.display = '';
-    return; // To Account is already handled by onTypeChange
+    return;
   }
   if (!wrap || !sel) return;
-  if (isBank) {
-    wrap.style.display = '';
-    var myAccounts = accounts.filter(function(a) {
-      return a.members && currentUser && currentUser.uid && a.members[currentUser.uid];
-    });
-    var current = sel.value;
-    sel.innerHTML = '<option value="">&#x2014; Select &#x2014;</option>' +
-      myAccounts.map(function(a) {
-        return '<option value="'+escHtml(a.id)+'"'+(a.id===current?' selected':'')+'>'+escHtml(a.name)+'</option>';
-      }).join('');
-  } else {
+  if (!payment) {
     wrap.style.display = 'none';
     sel.value = '';
+    return;
   }
+  var myAccounts = accounts.filter(function(a) {
+    return a.members && currentUser && currentUser.uid && a.members[currentUser.uid];
+  });
+  var options = [];
+  var labelText = 'From Account';
+  if (payment === 'Credit Card') {
+    labelText = 'Credit Card';
+    options = cards.map(function(c) {
+      return '<option value="card:'+escHtml(c.id)+'">'+escHtml(c.name)+(c.group?' ('+escHtml(c.group)+')':'')+' \u2014 '+fmt(c.balance)+' debt</option>';
+    });
+    if (!options.length) options = ['<option value="" disabled>No credit cards added yet</option>'];
+  } else {
+    var filtered;
+    if (payment === 'Cash') {
+      filtered = myAccounts.filter(function(a) { return a.type === 'Cash on Hand' || a.name.toLowerCase().indexOf('cash') !== -1; });
+      if (!filtered.length) filtered = myAccounts;
+    } else if (payment === 'GCash') {
+      filtered = myAccounts.filter(function(a) { return a.name.toLowerCase().indexOf('gcash') !== -1; });
+      if (!filtered.length) filtered = myAccounts;
+    } else if (payment === 'Maya') {
+      filtered = myAccounts.filter(function(a) { return a.name.toLowerCase().indexOf('maya') !== -1; });
+      if (!filtered.length) filtered = myAccounts;
+    } else if (payment === 'ShopeePay') {
+      filtered = myAccounts.filter(function(a) { return a.name.toLowerCase().indexOf('shopee') !== -1; });
+      if (!filtered.length) filtered = myAccounts;
+    } else if (payment === 'Bank Transfer') {
+      filtered = myAccounts.filter(function(a) { return a.type === 'Bank Account' || a.type === 'Savings'; });
+      if (!filtered.length) filtered = myAccounts;
+    } else {
+      filtered = myAccounts;
+    }
+    var current = sel.value;
+    options = filtered.map(function(a) {
+      return '<option value="'+escHtml(a.id)+'"'+(a.id===current?' selected':'')+'>'+escHtml(a.name)+'</option>';
+    });
+  }
+  if (fromLabel) fromLabel.textContent = labelText;
+  wrap.style.display = '';
+  sel.innerHTML = '<option value="">\u2014 Select \u2014</option>' + options.join('');
 }
 function clearForm() {
   ['fType','fCategory','fPayment','fDesc','fAmount','fPaidBy','fFromAccount'].forEach(function(id) { sv(id,''); });
@@ -431,9 +459,15 @@ async function addTransaction() {
       paidBy = v('fPaidBy'),
       fromAccountId = v('fFromAccount'),
       amount = parseFloat(v('fAmount')) || 0;
+  var isCardPayment = fromAccountId && fromAccountId.indexOf('card:') === 0;
+  var cardId = isCardPayment ? fromAccountId.slice(5) : null;
+  var acctId = isCardPayment ? '' : fromAccountId;
   var fromAccountName = '';
-  if (fromAccountId) {
-    var fromAcct = accounts.find(function(a) { return a.id === fromAccountId; });
+  if (isCardPayment && cardId) {
+    var payCardItem = cards.find(function(c) { return c.id === cardId; });
+    if (payCardItem) fromAccountName = payCardItem.name + (payCardItem.group ? ' (' + payCardItem.group + ')' : '');
+  } else if (acctId) {
+    var fromAcct = accounts.find(function(a) { return a.id === acctId; });
     if (fromAcct) fromAccountName = fromAcct.name;
   }
   if (!date)     { toast('Please select a date.','error'); return; }
@@ -443,11 +477,11 @@ async function addTransaction() {
   if (amount < 0) { toast('Amount cannot be negative.','error'); return; }
   // For income, the account is the destination (fromAccountId = "To Account")
   // For expense, fall back to activeAccountId
-  var txAccountId = (type === 'Income' && fromAccountId) ? fromAccountId : activeAccountId;
+  var txAccountId = (type === 'Income' && acctId) ? acctId : activeAccountId;
   if (!txAccountId) { toast('Select an account first.','error'); return; }
   var resolvedFromName = '';
-  if (type === 'Income' && fromAccountId) {
-    var destAcct = accounts.find(function(a) { return a.id === fromAccountId; });
+  if (type === 'Income' && acctId) {
+    var destAcct = accounts.find(function(a) { return a.id === acctId; });
     if (destAcct) resolvedFromName = destAcct.name;
   } else {
     resolvedFromName = fromAccountName;
@@ -460,28 +494,39 @@ async function addTransaction() {
     var id = await fbPost('transactions', tx);
     transactions.push(Object.assign({}, tx, { id:id }));
     // Credit "To Account" balance on income
-    if (type === 'Income' && fromAccountId && amountIn > 0) {
+    if (type === 'Income' && acctId && amountIn > 0) {
       try {
-        var toAcct = accounts.find(function(a) { return a.id === fromAccountId; });
+        var toAcct = accounts.find(function(a) { return a.id === acctId; });
         if (toAcct) {
           var newBal = (toAcct.balance || 0) + amountIn;
           var acctData = { name: toAcct.name, type: toAcct.type, balance: newBal, notes: toAcct.notes || '', members: toAcct.members || {} };
-          await fbPut('accounts', fromAccountId, acctData);
+          await fbPut('accounts', acctId, acctData);
           toAcct.balance = newBal;
         }
       } catch(balErr) { console.error('Balance update failed:', balErr); toast('Transaction saved but balance update failed — check Firebase rules.', 'error'); }
     }
-    // Deduct from the "From Account" balance on expense
-    if (type === 'Expense' && fromAccountId && amountOut > 0) {
-      try {
-        var fromAcct = accounts.find(function(a) { return a.id === fromAccountId; });
-        if (fromAcct) {
-          var newBal = (fromAcct.balance || 0) - amountOut;
-          var acctData = { name: fromAcct.name, type: fromAcct.type, balance: newBal, notes: fromAcct.notes || '', members: fromAcct.members || {} };
-          await fbPut('accounts', fromAccountId, acctData);
-          fromAcct.balance = newBal;
-        }
-      } catch(balErr) { console.error('Balance update failed:', balErr); toast('Transaction saved but balance update failed — check Firebase rules.', 'error'); }
+    // Deduct from account / add to card balance on expense
+    if (type === 'Expense' && amountOut > 0) {
+      if (isCardPayment && cardId) {
+        try {
+          var expCard = cards.find(function(c) { return c.id === cardId; });
+          if (expCard) {
+            var newCardBal = (expCard.balance || 0) + amountOut;
+            await fbPut('cards', cardId, { name:expCard.name, group:expCard.group||'', limit:expCard.limit||0, balance:newCardBal, dueDay:expCard.dueDay||0, notes:expCard.notes||'', uid:expCard.uid });
+            expCard.balance = newCardBal;
+          }
+        } catch(balErr) { console.error('Card balance update failed:', balErr); toast('Transaction saved but card balance update failed.', 'error'); }
+      } else if (acctId) {
+        try {
+          var expAcct = accounts.find(function(a) { return a.id === acctId; });
+          if (expAcct) {
+            var newBal = (expAcct.balance || 0) - amountOut;
+            var acctData = { name: expAcct.name, type: expAcct.type, balance: newBal, notes: expAcct.notes || '', members: expAcct.members || {} };
+            await fbPut('accounts', acctId, acctData);
+            expAcct.balance = newBal;
+          }
+        } catch(balErr) { console.error('Balance update failed:', balErr); toast('Transaction saved but balance update failed — check Firebase rules.', 'error'); }
+      }
     }
     refreshAll(); clearForm(); toast('Transaction added!');
   } catch(e) { console.error(e); toast('Failed to save.','error'); }
@@ -870,6 +915,29 @@ async function deleteCard(id) {
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
 }
+async function payCard(id) {
+  var card = cards.find(function(c) { return c.id === id; });
+  if (!card) return;
+  var input = window.prompt('Payment amount for ' + card.name + '? (Balance: ' + fmt(card.balance) + ')', (card.balance || 0).toFixed(2));
+  if (input === null) return;
+  var amount = parseFloat(input);
+  if (isNaN(amount) || amount <= 0) { toast('Invalid amount.', 'error'); return; }
+  if (!activeAccountId) { toast('Select an account first.', 'error'); return; }
+  setLoading(true);
+  try {
+    // 1. Reduce card balance
+    var newBal = Math.max(0, (card.balance || 0) - amount);
+    await fbPut('cards', id, { name:card.name, group:card.group||'', limit:card.limit||0, balance:newBal, dueDay:card.dueDay||0, notes:card.notes||'', uid:card.uid });
+    card.balance = newBal;
+    // 2. Log a Debt Payment transaction
+    var tx = { date:todayStr(), type:'Expense', category:'Debt Payment', payment:'Bank Transfer', paidBy:(currentUser.displayName||currentUser.email||''), fromAccount:'', desc:'Payment — '+card.name, amountIn:0, amountOut:amount, accountId:activeAccountId };
+    var txId = await fbPost('transactions', tx);
+    transactions.push(Object.assign({}, tx, { id:txId }));
+    renderCards(); renderSummary(); renderTable();
+    toast('Payment of ' + fmt(amount) + ' recorded for ' + card.name + '!');
+  } catch(e) { console.error(e); toast('Failed to record payment.', 'error'); }
+  finally { setLoading(false); }
+}
 var cardsCombined = localStorage.getItem('et_cards_combined') === '1';
 function toggleCombineCards() {
   cardsCombined = !cardsCombined;
@@ -895,8 +963,12 @@ function renderCards() {
     var pct = c.limit ? Math.min(100,(c.balance/c.limit)*100) : 0;
     var barColor = pct>80?'var(--red)':pct>50?'var(--orange)':'var(--blue)';
     return '<div class="account-card">' +
-      '<div class="acc-actions"><button class="icon-btn del" onclick="deleteCard(\''+c.id+'\')" title="Delete">&#x1F5D1;&#xFE0F;</button></div>' +
-      '<div class="acc-name">'+escHtml(c.name)+(c.group?'<span class="card-group-tag">'+escHtml(c.group)+'</span>':'')+'</div>' +
+      '<div class="acc-actions">' +
+        (c.balance > 0 ? '<button class="icon-btn" onclick="payCard(\''+c.id+'\')" title="Record payment" style="color:var(--green);border-color:var(--green);margin-right:4px">&#x2714; Pay</button>' : '') +
+        '<button class="icon-btn del" onclick="deleteCard(\''+c.id+'\')" title="Delete">&#x1F5D1;&#xFE0F;</button>' +
+      '</div>' +
+      '<div class="acc-name">'+escHtml(c.name)+'</div>' +
+      (c.group?'<div style="margin:-4px 0 6px"><span class="card-group-tag">'+escHtml(c.group)+'</span></div>':'') +
       '<div class="acc-balance" style="color:var(--orange)">'+fmt(c.balance)+'</div>' +
       '<div class="acc-type">Limit: '+fmt(c.limit)+(c.dueDay !== undefined && c.dueDay !== '' ? ' \u00B7 Due: '+fmtDueDay(c.dueDay) : '')+'</div>' +
       (c.limit ? '<div class="goal-bar-wrap" style="margin-top:8px"><div class="goal-bar" style="width:'+pct+'%;background:'+barColor+'"></div></div><div style="font-size:.7rem;color:var(--text-muted)">'+pct.toFixed(0)+'% used</div>' : '') +
@@ -949,6 +1021,59 @@ async function addBill() {
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
 }
+async function payBill(id) {
+  var bill = bills.find(function(b) { return b.id === id; });
+  if (!bill) return;
+  var input = window.prompt('Payment amount for ' + bill.name + '?', (bill.amount || 0).toFixed(2));
+  if (input === null) return;
+  var amount = parseFloat(input);
+  if (isNaN(amount) || amount <= 0) { toast('Invalid amount.', 'error'); return; }
+  if (!activeAccountId) { toast('Select an account first.', 'error'); return; }
+  setLoading(true);
+  try {
+    var tx = { date:todayStr(), type:'Expense', category:bill.category||'Bills & Utilities', payment:bill.payment||'', paidBy:(currentUser.displayName||currentUser.email||''), fromAccount:'', desc:'Bill Payment \u2014 '+bill.name, amountIn:0, amountOut:amount, accountId:activeAccountId };
+    var txId = await fbPost('transactions', tx);
+    transactions.push(Object.assign({}, tx, { id:txId }));
+    renderSummary(); renderTable();
+    toast('Payment of ' + fmt(amount) + ' recorded for ' + bill.name + '!');
+  } catch(e) { console.error(e); toast('Failed to record payment.', 'error'); }
+  finally { setLoading(false); }
+}
+var editingBillId = null;
+function openEditBill(id) {
+  var bill = bills.find(function(b) { return b.id === id; });
+  if (!bill) return;
+  editingBillId = id;
+  document.getElementById('ebName').value     = bill.name || '';
+  document.getElementById('ebCategory').value = bill.category || '';
+  document.getElementById('ebAmount').value   = bill.amount || '';
+  document.getElementById('ebDueDay').value   = (bill.dueDay !== undefined && bill.dueDay !== null) ? bill.dueDay : '';
+  document.getElementById('ebPayment').value  = bill.payment || '';
+  document.getElementById('ebNotes').value    = bill.notes || '';
+  document.getElementById('editBillModal').classList.remove('hidden');
+}
+async function saveEditBill() {
+  var bill = bills.find(function(b) { return b.id === editingBillId; });
+  if (!bill) return;
+  var name     = document.getElementById('ebName').value.trim();
+  var category = document.getElementById('ebCategory').value;
+  var amount   = parseFloat(document.getElementById('ebAmount').value) || 0;
+  var dueDay   = parseInt(document.getElementById('ebDueDay').value) || 0;
+  var payment  = document.getElementById('ebPayment').value;
+  var notes    = document.getElementById('ebNotes').value.trim();
+  if (!name)   { toast('Bill name required.', 'error'); return; }
+  if (!amount) { toast('Amount required.', 'error'); return; }
+  setLoading(true);
+  try {
+    var updated = { name:name, category:category, amount:amount, dueDay:dueDay, payment:payment, notes:notes, uid:bill.uid };
+    await fbPut('bills', editingBillId, updated);
+    Object.assign(bill, updated);
+    closeModal('editBillModal');
+    renderBills();
+    toast('Bill updated!');
+  } catch(e) { console.error(e); toast('Failed to update.', 'error'); }
+  finally { setLoading(false); }
+}
 async function deleteBill(id) {
   if (!confirm('Delete this bill?')) return;
   setLoading(true);
@@ -974,7 +1099,11 @@ function renderBills() {
     '</div>' +
     '<div class="bill-amount">'+fmt(b.amount)+'<span style="font-size:.72rem;color:var(--text-muted);font-weight:400"> /mo</span></div>' +
     (b.notes?'<div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">'+escHtml(b.notes)+'</div>':'') +
-    '<div style="margin-top:8px"><button class="icon-btn del" onclick="deleteBill(\''+b.id+'\')">&#x1F5D1;&#xFE0F; Delete</button></div>' +
+    '<div style="margin-top:10px;display:flex;gap:6px">' +
+      '<button class="icon-btn" onclick="payBill(\''+b.id+'\')" style="color:var(--green);border-color:var(--green)">&#x2714; Pay</button>' +
+      '<button class="icon-btn" onclick="openEditBill(\''+b.id+'\')" style="color:var(--blue);border-color:var(--blue)">&#x270F;&#xFE0F; Edit</button>' +
+      '<button class="icon-btn del" onclick="deleteBill(\''+b.id+'\')">&#x1F5D1;&#xFE0F; Delete</button>' +
+    '</div>' +
     '</div>'
   ); }).join('');
 }
@@ -1027,15 +1156,17 @@ function renderContributions() {
 // ── GOALS ──
 async function addGoal() {
   var name=v('gName').trim(), target=parseFloat(v('gTarget'))||0,
-      saved=parseFloat(v('gSaved'))||0, monthly=parseFloat(v('gMonthly'))||0, notes=v('gNotes').trim();
+      saved=parseFloat(v('gSaved'))||0, monthly=parseFloat(v('gMonthly'))||0,
+      accountId=v('gAccount'), notes=v('gNotes').trim();
   if (!name)   { toast('Goal name required.','error'); return; }
   if (!target) { toast('Target amount required.','error'); return; }
   setLoading(true);
   try {
-    var id = await fbPost('goals', { name:name, target:target, saved:saved, monthly:monthly, notes:notes, uid:currentUser.uid });
-    goals.push({ id:id, name:name, target:target, saved:saved, monthly:monthly, notes:notes, uid:currentUser.uid });
+    var id = await fbPost('goals', { name:name, target:target, saved:saved, monthly:monthly, accountId:accountId||'', notes:notes, uid:currentUser.uid });
+    goals.push({ id:id, name:name, target:target, saved:saved, monthly:monthly, accountId:accountId||'', notes:notes, uid:currentUser.uid });
     renderGoals();
     ['gName','gTarget','gSaved','gMonthly','gNotes'].forEach(function(i) { sv(i,''); });
+    sv('gAccount','');
     toast('Goal added!');
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
@@ -1057,6 +1188,28 @@ function renderGoals() {
     var pct = g.target ? Math.min(100,(g.saved/g.target)*100) : 0;
     var rem = Math.max(0, g.target - g.saved);
     var months = g.monthly > 0 ? Math.ceil(rem/g.monthly) : null;
+    // Linked account info
+    var acctHtml = '';
+    if (g.accountId) {
+      var acct = accounts.find(function(a) { return a.id === g.accountId; });
+      if (acct) {
+        var acctBal = acct.balance || 0;
+        var stillNeeded = Math.max(0, rem - acctBal);
+        acctHtml =
+          '<div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,.04);border-radius:6px;font-size:.78rem">' +
+            '<div style="display:flex;justify-content:space-between;margin-bottom:3px">' +
+              '<span style="color:var(--text-muted)">&#x1F4B0; ' + escHtml(acct.name) + '</span>' +
+              '<span style="color:var(--cyan)">' + fmt(acctBal) + ' available</span>' +
+            '</div>' +
+            '<div style="display:flex;justify-content:space-between">' +
+              '<span style="color:var(--text-muted)">Still needed</span>' +
+              '<span style="color:' + (stillNeeded === 0 ? 'var(--green)' : 'var(--orange)') + ';font-weight:600">' +
+                (stillNeeded === 0 ? '&#x2714; Funded!' : fmt(stillNeeded) + ' more') +
+              '</span>' +
+            '</div>' +
+          '</div>';
+      }
+    }
     return (
       '<div class="goal-card">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start">' +
@@ -1070,6 +1223,7 @@ function renderGoals() {
         '<span>Goal: '+fmt(g.target)+'</span>' +
       '</div>' +
       (months!==null?'<div style="font-size:.75rem;color:var(--text-muted);margin-top:6px">~'+months+' month'+(months!==1?'s':'')+' to go at '+fmt(g.monthly)+'/mo</div>':'') +
+      acctHtml +
       (g.notes?'<div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">'+escHtml(g.notes)+'</div>':'') +
       '</div>'
     );
@@ -1194,7 +1348,7 @@ function renderSummary() {
 
   var ACCENT_COLORS = ['var(--blue)','var(--green)','var(--cyan)','var(--yellow)','var(--purple, #a855f7)'];
 
-  function makeCard(name, value, sublabel, color) {
+  function makeCard(name, value, sublabel, color, tabTarget) {
     var div = document.createElement('div');
     div.className = 'card';
     div.style.setProperty('--card-accent', color);
@@ -1202,6 +1356,15 @@ function renderSummary() {
       '<div class="label">' + name + '</div>' +
       '<div class="value" style="color:' + color + '">' + value + '</div>' +
       '<div class="sublabel">' + sublabel + '</div>';
+    if (tabTarget) {
+      div.style.cursor = 'pointer';
+      div.title = 'Go to ' + tabTarget;
+      div.addEventListener('click', function() {
+        var tabSel = document.getElementById('tabSelect');
+        if (tabSel) tabSel.value = tabTarget;
+        switchTab(tabTarget);
+      });
+    }
     return div;
   }
 
@@ -1212,7 +1375,8 @@ function renderSummary() {
       escHtml(a.name),
       fmt(a.balance||0),
       escHtml(a.type||'Account') + (a.notes ? ' \u00B7 ' + escHtml(a.notes) : ''),
-      color
+      color,
+      'accounts'
     ));
   });
 
@@ -1223,7 +1387,7 @@ function renderSummary() {
     else ungrouped.push(c);
   });
   function appendCardSummary(name, balance, limit) {
-    cardsRow.appendChild(makeCard(escHtml(name), fmt(balance), 'Limit: ' + fmt(limit), 'var(--orange)'));
+    cardsRow.appendChild(makeCard(escHtml(name), fmt(balance), 'Limit: ' + fmt(limit), 'var(--orange)', 'cards'));
   }
   if (cardsCombined) {
     Object.keys(groups).forEach(function(g) {
@@ -1245,10 +1409,23 @@ function renderSummary() {
 }
 
 // ── REFRESH ALL ──
+function populateGoalAccountSelect() {
+  var sel = document.getElementById('gAccount');
+  if (!sel) return;
+  var current = sel.value;
+  var memberAccounts = accounts.filter(function(a) {
+    return a.members && currentUser && currentUser.uid && a.members[currentUser.uid];
+  });
+  sel.innerHTML = '<option value="">\u2014 None \u2014</option>' +
+    memberAccounts.map(function(a) {
+      return '<option value="'+escHtml(a.id)+'"'+(a.id===current?' selected':'')+'>'+escHtml(a.name)+(a.type?' ('+escHtml(a.type)+')':'')+'</option>';
+    }).join('');
+}
 function refreshAll() {
   populateCategoryFilter();
   populateAccountFilter();
   populateDescDropdown();
+  populateGoalAccountSelect();
   renderSummary();
   renderTable();
   renderAccounts();
@@ -1331,7 +1508,11 @@ var editModal = document.getElementById('editModal');
 if (editModal) {
   editModal.addEventListener('click', function(e) { if(e.target===this) closeModal('editModal'); });
 }
-document.addEventListener('keydown', function(e) { if(e.key==='Escape') closeModal('editModal'); });
+var editBillModal = document.getElementById('editBillModal');
+if (editBillModal) {
+  editBillModal.addEventListener('click', function(e) { if(e.target===this) closeModal('editBillModal'); });
+}
+document.addEventListener('keydown', function(e) { if(e.key==='Escape') { closeModal('editModal'); closeModal('editBillModal'); } });
 
 function toggleProfileDropdown() {
   var dd = document.getElementById('profileDropdown');
