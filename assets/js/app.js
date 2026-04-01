@@ -69,6 +69,24 @@ async function fbSetValue(path, value) {
   });
   if (!res.ok) throw new Error('PUT ' + path + ' failed: ' + res.status);
 }
+// Fetch all records at `path` where the `uid` field equals `uid`.
+// Uses a server-side orderBy query when the Firebase index is ready.
+// Falls back to a full fetch + client-side filter if the index isn't defined yet (HTTP 400).
+async function fbGetByUid(path, uid) {
+  const token = await getToken();
+  const res = await fetch(BASE + '/' + path + '.json?auth=' + token + '&orderBy=%22uid%22&equalTo=%22' + encodeURIComponent(uid) + '%22');
+  if (res.status === 400) {
+    // Index not yet defined — fall back to full collection fetch + client-side filter
+    const fallback = await fetch(BASE + '/' + path + '.json?auth=' + token);
+    if (!fallback.ok) throw new Error('GET ' + path + ' failed: ' + fallback.status);
+    const raw = await fallback.json();
+    const all = raw ? Object.entries(raw).map(([id, v]) => Object.assign({}, v, { id })) : [];
+    return all.filter(function(x) { return x.uid === uid; });
+  }
+  if (!res.ok) throw new Error('GET ' + path + ' (uid=' + uid + ') failed: ' + res.status);
+  const data = await res.json();
+  return data ? Object.entries(data).map(([id, v]) => Object.assign({}, v, { id })) : [];
+}
 
 // Auth
 const G_SVG = '<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
@@ -1855,11 +1873,17 @@ auth.onAuthStateChanged(async function(user) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userProfile)
       });
+      // Write email → uid index so invites can look up a uid without scanning all users
+      var emailIdx = user.email.toLowerCase().replace(/\./g, ',');
+      await fetch(BASE + '/userEmailIndex/' + emailIdx + '.json?auth=' + token, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(user.uid)
+      });
       // Pre-cache current user so Paid By dropdown populates immediately
       usersCache[user.uid] = userProfile;
       // Accept any pending invites for this user's email
       await processPendingInvites(user, token);
-      async function safeFbGet(path) { try { return await fbGet(path); } catch(e) { console.warn('Could not load ' + path + ':', e); return []; } }
       var uid = user.uid;
       // Fetch linked member UIDs so their cards/bills/etc are also visible
       var linkedUids = [uid];
@@ -1870,18 +1894,35 @@ auth.onAuthStateChanged(async function(user) {
           Object.keys(lData).forEach(function(k) { if (lData[k]) linkedUids.push(k); });
         }
       } catch(e) { console.warn('Could not load linked UIDs:', e); }
-      function filterByUid(arr) { return arr.filter(function(x) { return !x.uid || linkedUids.indexOf(x.uid) !== -1; }); }
-      var results = await Promise.all([
-        safeFbGet('transactions'), safeFbGet('accounts'), safeFbGet('cards'),
-        safeFbGet('bills'), safeFbGet('contributions'), safeFbGet('goals'),
-        safeFbGet('incomeSources'), safeFbGet('healthItems'),
-        safeFbGet('assets'), safeFbGet('liabilities')
-      ]);
-      transactions=results[0]; accounts=results[1];
-      cards=filterByUid(results[2]); bills=filterByUid(results[3]);
-      contributions=filterByUid(results[4]); goals=filterByUid(results[5]);
-      incomeSources=filterByUid(results[6]); healthItems=filterByUid(results[7]);
-      assets=filterByUid(results[8]); liabilities=filterByUid(results[9]);
+      async function safeFbGet(path) { try { return await fbGet(path); } catch(e) { console.warn('Could not load ' + path + ':', e); return []; } }
+      async function safeFbGetByUid(path, uid) { try { return await fbGetByUid(path, uid); } catch(e) { console.warn('Could not load ' + path + ' for uid ' + uid + ':', e); return []; } }
+      // Fetch accounts and transactions (shared entities — filtered client-side by membership)
+      var [txData, accData] = await Promise.all([safeFbGet('transactions'), safeFbGet('accounts')]);
+      transactions = txData;
+      accounts = accData;
+      // Fetch uid-scoped personal data with server-side uid filter for each linked user.
+      // The rules enforce orderBy=uid queries, so only authorised data is returned.
+      var uidPaths = ['cards','bills','contributions','goals','incomeSources','healthItems','assets','liabilities'];
+      var perUidResults = await Promise.all(
+        linkedUids.map(function(linkedUid) {
+          return Promise.all(uidPaths.map(function(p) { return safeFbGetByUid(p, linkedUid); }));
+        })
+      );
+      function mergeUidResults(idx) {
+        var seen = {}, merged = [];
+        perUidResults.forEach(function(uidData) {
+          uidData[idx].forEach(function(item) { if (!seen[item.id]) { seen[item.id] = true; merged.push(item); } });
+        });
+        return merged;
+      }
+      cards         = mergeUidResults(0);
+      bills         = mergeUidResults(1);
+      contributions = mergeUidResults(2);
+      goals         = mergeUidResults(3);
+      incomeSources = mergeUidResults(4);
+      healthItems   = mergeUidResults(5);
+      assets        = mergeUidResults(6);
+      liabilities   = mergeUidResults(7);
     } catch(e) {
       console.error(e);
       toast('Could not load data from Firebase.','error');
@@ -1965,17 +2006,13 @@ async function inviteMemberSubmit() {
   setLoading(true);
   try {
     var token = await getToken();
-    // Find existing user by scanning /users
+    // Look up uid by email using the index (avoids reading all user profiles)
     var matchedUid = null;
-    var res = await fetch(BASE + '/users.json?auth=' + token);
-    var allUsers = res.ok ? await res.json() : null;
-    if (allUsers) {
-      var uids = Object.keys(allUsers);
-      for (var j = 0; j < uids.length; j++) {
-        if ((allUsers[uids[j]].email || '').toLowerCase() === email) {
-          matchedUid = uids[j]; break;
-        }
-      }
+    var emailKey = email.replace(/\./g, ',');
+    var idxRes = await fetch(BASE + '/userEmailIndex/' + emailKey + '.json?auth=' + token);
+    if (idxRes.ok) {
+      var idxVal = await idxRes.json();
+      if (typeof idxVal === 'string' && idxVal) matchedUid = idxVal;
     }
     if (matchedUid) {
       // Store bidirectional profile-level link

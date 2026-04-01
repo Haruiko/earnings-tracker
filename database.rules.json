@@ -1,0 +1,163 @@
+{
+  "rules": {
+
+    // ── USER PROFILES ──
+    // Each user can only read/write their own profile.
+    // Linked members can read each other's profiles (needed for Paid By dropdown).
+    "users": {
+      "$uid": {
+        ".read":  "auth != null && (auth.uid === $uid || root.child('userLinks').child(auth.uid).child('linkedWith').child($uid).val() === true)",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    // ── EMAIL → UID INDEX ──
+    // Written on every login so invite flow can resolve an email to a uid
+    // without scanning all user profiles.
+    // Any signed-in user can read a specific key (needed to look someone up by email when inviting).
+    // Write is locked to the uid that matches the value being written.
+    "userEmailIndex": {
+      "$emailKey": {
+        ".read":  "auth != null",
+        ".write": "auth != null && newData.val() === auth.uid"
+      }
+    },
+
+    // ── ACCOUNTS ──
+    // Accounts are shared resources (members map). Any signed-in user can list
+    // them but only account members can write. Client-side filtering by membership
+    // ensures users only see their own accounts in the UI.
+    // NOTE: Full server-side read restriction here requires restructuring the
+    // data model (e.g. a per-user account index). Planned future improvement.
+    "accounts": {
+      ".read": "auth != null",
+      "$accountId": {
+        ".write": "auth != null && (data.child('members').child(auth.uid).exists() || (!data.exists() && newData.child('members').child(auth.uid).exists()))"
+      }
+    },
+
+    // ── TRANSACTIONS ──
+    // Same note as accounts — tied to shared account membership.
+    "transactions": {
+      ".read": "auth != null",
+      "$txId": {
+        ".write": "auth != null && (
+          (newData.exists() && root.child('accounts').child(newData.child('accountId').val()).child('members').child(auth.uid).exists()) ||
+          (!newData.exists() && root.child('accounts').child(data.child('accountId').val()).child('members').child(auth.uid).exists())
+        )"
+      }
+    },
+
+    // ── USER LINKS ──
+    // Each user can only read/write their own linkedWith map.
+    "userLinks": {
+      "$uid": {
+        ".read":  "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    // ── PENDING INVITES ──
+    // Stored under the invitee's email key.
+    // - The invitee (identified via emailIndex) can read and delete their slot.
+    // - Any signed-in user can write ONLY their own uid into the linkedWith map.
+    "pendingInvites": {
+      "$emailKey": {
+        ".read":  "auth != null && root.child('userEmailIndex').child($emailKey).val() === auth.uid",
+        ".write": "auth != null && root.child('userEmailIndex').child($emailKey).val() === auth.uid",
+        "linkedWith": {
+          "$inviterUid": {
+            ".write": "auth != null && auth.uid === $inviterUid"
+          }
+        }
+      }
+    },
+
+    // ── UID-OWNED COLLECTIONS ──
+    // Cards, bills, contributions, goals, incomeSources, healthItems, assets, liabilities
+    // are personal records each carrying a `uid` field.
+    //
+    // READ rules:
+    //   Collection list: only allowed via an orderBy=uid filtered query, AND the
+    //   requested uid must be the caller or a linked member.
+    //   Individual record: allowed if owner or linked member.
+    //
+    // WRITE rules: only the record's owner can create/update/delete it.
+    //
+    // App.js uses fbGetByUid() which appends ?orderBy="uid"&equalTo="<uid>"
+    // matching these rules. The ".indexOn" directive makes the query efficient.
+
+    "cards": {
+      ".read": "auth != null && query.orderByChild === 'uid' && (query.equalTo === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(query.equalTo).val() === true)",
+      "$id": {
+        ".read":  "auth != null && (data.child('uid').val() === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(data.child('uid').val()).val() === true)",
+        ".write": "auth != null && (!data.exists() && newData.child('uid').val() === auth.uid || data.child('uid').val() === auth.uid)"
+      },
+      ".indexOn": ["uid"]
+    },
+
+    "bills": {
+      ".read": "auth != null && query.orderByChild === 'uid' && (query.equalTo === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(query.equalTo).val() === true)",
+      "$id": {
+        ".read":  "auth != null && (data.child('uid').val() === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(data.child('uid').val()).val() === true)",
+        ".write": "auth != null && (!data.exists() && newData.child('uid').val() === auth.uid || data.child('uid').val() === auth.uid)"
+      },
+      ".indexOn": ["uid"]
+    },
+
+    "contributions": {
+      ".read": "auth != null && query.orderByChild === 'uid' && (query.equalTo === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(query.equalTo).val() === true)",
+      "$id": {
+        ".read":  "auth != null && (data.child('uid').val() === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(data.child('uid').val()).val() === true)",
+        ".write": "auth != null && (!data.exists() && newData.child('uid').val() === auth.uid || data.child('uid').val() === auth.uid)"
+      },
+      ".indexOn": ["uid"]
+    },
+
+    "goals": {
+      ".read": "auth != null && query.orderByChild === 'uid' && (query.equalTo === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(query.equalTo).val() === true)",
+      "$id": {
+        ".read":  "auth != null && (data.child('uid').val() === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(data.child('uid').val()).val() === true)",
+        ".write": "auth != null && (!data.exists() && newData.child('uid').val() === auth.uid || data.child('uid').val() === auth.uid)"
+      },
+      ".indexOn": ["uid"]
+    },
+
+    "incomeSources": {
+      ".read": "auth != null && query.orderByChild === 'uid' && (query.equalTo === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(query.equalTo).val() === true)",
+      "$id": {
+        ".read":  "auth != null && (data.child('uid').val() === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(data.child('uid').val()).val() === true)",
+        ".write": "auth != null && (!data.exists() && newData.child('uid').val() === auth.uid || data.child('uid').val() === auth.uid)"
+      },
+      ".indexOn": ["uid"]
+    },
+
+    "healthItems": {
+      ".read": "auth != null && query.orderByChild === 'uid' && (query.equalTo === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(query.equalTo).val() === true)",
+      "$id": {
+        ".read":  "auth != null && (data.child('uid').val() === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(data.child('uid').val()).val() === true)",
+        ".write": "auth != null && (!data.exists() && newData.child('uid').val() === auth.uid || data.child('uid').val() === auth.uid)"
+      },
+      ".indexOn": ["uid"]
+    },
+
+    "assets": {
+      ".read": "auth != null && query.orderByChild === 'uid' && (query.equalTo === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(query.equalTo).val() === true)",
+      "$id": {
+        ".read":  "auth != null && (data.child('uid').val() === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(data.child('uid').val()).val() === true)",
+        ".write": "auth != null && (!data.exists() && newData.child('uid').val() === auth.uid || data.child('uid').val() === auth.uid)"
+      },
+      ".indexOn": ["uid"]
+    },
+
+    "liabilities": {
+      ".read": "auth != null && query.orderByChild === 'uid' && (query.equalTo === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(query.equalTo).val() === true)",
+      "$id": {
+        ".read":  "auth != null && (data.child('uid').val() === auth.uid || root.child('userLinks').child(auth.uid).child('linkedWith').child(data.child('uid').val()).val() === true)",
+        ".write": "auth != null && (!data.exists() && newData.child('uid').val() === auth.uid || data.child('uid').val() === auth.uid)"
+      },
+      ".indexOn": ["uid"]
+    }
+
+  }
+}
