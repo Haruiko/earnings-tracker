@@ -18,6 +18,9 @@ let contributions = [];
 let goals         = [];
 let incomeSources = [];
 let healthItems   = [];
+let assets        = [];
+let liabilities   = [];
+let lastTotalExpense = 0;
 let activeAccountId = null; // For joint/shared account selection
 let usersCache    = {}; // uid -> { displayName, email }
 
@@ -220,7 +223,7 @@ async function populatePaidBySelect() {
 
 // ── TRANSACTIONS ──
 var INCOME_CATS  = ['Salary','Freelance','Business','Investment','Interest Gained','Gift','Refund','Other Income'];
-var EXPENSE_CATS = ['Food & Dining','Bills & Utilities','Transportation','Shopping','Entertainment','Health & Medical','Education','Rent','Groceries','Government','Subscriptions','Debt Payment','Interest Withheld','Other Expense'];
+var EXPENSE_CATS = ['Food & Dining','Bills & Utilities','Transportation','Shopping','Entertainment','Health & Medical','Education','Rent','Groceries','Government','Gov Contribution','Subscriptions','Debt Payment','Interest Withheld','Other Expense'];
 var NO_PAYMENT_CATS = ['Interest Gained','Interest Withheld'];
 
 // ── SAVED DESCRIPTIONS ──
@@ -393,7 +396,7 @@ function onPaymentMethodChange() {
     return;
   }
   if (!wrap || !sel) return;
-  if (!payment) {
+  if (!payment || payment === 'Other') {
     wrap.style.display = 'none';
     sel.value = '';
     return;
@@ -417,11 +420,8 @@ function onPaymentMethodChange() {
     } else if (payment === 'GCash') {
       filtered = myAccounts.filter(function(a) { return a.name.toLowerCase().indexOf('gcash') !== -1; });
       if (!filtered.length) filtered = myAccounts;
-    } else if (payment === 'Maya') {
-      filtered = myAccounts.filter(function(a) { return a.name.toLowerCase().indexOf('maya') !== -1; });
-      if (!filtered.length) filtered = myAccounts;
-    } else if (payment === 'ShopeePay') {
-      filtered = myAccounts.filter(function(a) { return a.name.toLowerCase().indexOf('shopee') !== -1; });
+    } else if (payment === 'GrabPay') {
+      filtered = myAccounts.filter(function(a) { return a.name.toLowerCase().indexOf('grab') !== -1; });
       if (!filtered.length) filtered = myAccounts;
     } else if (payment === 'Bank Transfer') {
       filtered = myAccounts.filter(function(a) { return a.type === 'Bank Account' || a.type === 'Savings'; });
@@ -437,6 +437,60 @@ function onPaymentMethodChange() {
   if (fromLabel) fromLabel.textContent = labelText;
   wrap.style.display = '';
   sel.innerHTML = '<option value="">\u2014 Select \u2014</option>' + options.join('');
+}
+function _populateBillFromAccount(paymentId, wrapId, selId, labelId) {
+  var payment = document.getElementById(paymentId) ? document.getElementById(paymentId).value : '';
+  var wrap = document.getElementById(wrapId);
+  var sel  = document.getElementById(selId);
+  var fromLabel = document.getElementById(labelId);
+  if (!wrap || !sel) return;
+  if (!payment || payment === 'Other') {
+    wrap.style.display = 'none';
+    sel.value = '';
+    return;
+  }
+  var myAccounts = accounts.filter(function(a) {
+    return a.members && currentUser && currentUser.uid && a.members[currentUser.uid];
+  });
+  var options = [];
+  var labelText = 'From Account';
+  if (payment === 'Credit Card' || payment.toLowerCase().indexOf('credit card') !== -1) {
+    labelText = 'Credit Card';
+    options = cards.map(function(c) {
+      return '<option value="card:'+escHtml(c.id)+'">'+escHtml(c.name)+(c.group?' ('+escHtml(c.group)+')':'')+' \u2014 '+fmt(c.balance)+' debt</option>';
+    });
+    if (!options.length) options = ['<option value="" disabled>No credit cards added yet</option>'];
+  } else {
+    var filtered;
+    var current = sel.value;
+    if (payment === 'Cash') {
+      filtered = myAccounts.filter(function(a) { return a.type === 'Cash on Hand' || a.name.toLowerCase().indexOf('cash') !== -1; });
+      if (!filtered.length) filtered = myAccounts;
+    } else if (payment === 'GCash') {
+      filtered = myAccounts.filter(function(a) { return a.name.toLowerCase().indexOf('gcash') !== -1; });
+      if (!filtered.length) filtered = myAccounts;
+    } else if (payment === 'GrabPay') {
+      filtered = myAccounts.filter(function(a) { return a.name.toLowerCase().indexOf('grab') !== -1; });
+      if (!filtered.length) filtered = myAccounts;
+    } else if (payment === 'Bank Transfer') {
+      filtered = myAccounts.filter(function(a) { return a.type === 'Bank Account' || a.type === 'Savings'; });
+      if (!filtered.length) filtered = myAccounts;
+    } else {
+      filtered = myAccounts;
+    }
+    options = filtered.map(function(a) {
+      return '<option value="'+escHtml(a.id)+'"'+(a.id===current?' selected':'')+'>'+escHtml(a.name)+'</option>';
+    });
+  }
+  if (fromLabel) fromLabel.textContent = labelText;
+  wrap.style.display = '';
+  sel.innerHTML = '<option value="">\u2014 Select \u2014</option>' + options.join('');
+}
+function onBillPaymentChange() {
+  _populateBillFromAccount('bPayment', 'bFromAccountWrap', 'bFromAccount', 'bFromAccountLabel');
+}
+function onEditBillPaymentChange() {
+  _populateBillFromAccount('ebPayment', 'ebFromAccountWrap', 'ebFromAccount', 'ebFromAccountLabel');
 }
 function clearForm() {
   ['fType','fCategory','fPayment','fDesc','fAmount','fPaidBy','fFromAccount'].forEach(function(id) { sv(id,''); });
@@ -782,6 +836,16 @@ async function deleteAccount(id) {
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
 }
+function acctTypeColor(type) {
+  switch (type) {
+    case 'Bank Account': return 'var(--blue)';
+    case 'Savings':      return 'var(--cyan)';
+    case 'E-Wallet':     return 'var(--purple)';
+    case 'Cash on Hand': return 'var(--green)';
+    case 'Investment':   return 'var(--yellow)';
+    default:             return 'var(--text-muted)';
+  }
+}
 function renderAccounts() {
   var grid = document.getElementById('accountsGrid');
   // Only show accounts where current user is a member
@@ -798,7 +862,7 @@ function renderAccounts() {
     '<button class="icon-btn del" onclick="deleteAccount(\''+a.id+'\')" title="Delete">&#x1F5D1;&#xFE0F;</button>' +
     '</div>' +
     '<div class="acc-name">'+escHtml(a.name)+'</div>' +
-    '<div class="acc-balance">'+fmt(a.balance)+'</div>' +
+    '<div class="acc-balance" style="color:'+acctTypeColor(a.type)+'">'+fmt(a.balance)+'</div>' +
     '<div class="acc-type">'+escHtml(a.type)+(a.notes?' \u00B7 '+escHtml(a.notes):'')+'</div>' +
     '</div>'
   ); }).join('');
@@ -905,6 +969,39 @@ async function addCard() {
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
 }
+var editCardId = null;
+function openEditCard(id) {
+  var card = cards.find(function(c) { return c.id === id; });
+  if (!card) return;
+  editCardId = id;
+  sv('ecName', card.name);
+  sv('ecGroup', card.group || '');
+  sv('ecLimit', card.limit || 0);
+  sv('ecBalance', card.balance || 0);
+  sv('ecDueDay', card.dueDay !== undefined && card.dueDay !== null ? card.dueDay : '');
+  sv('ecNotes', card.notes || '');
+  document.getElementById('editCardModal').classList.remove('hidden');
+}
+async function saveEditCard() {
+  var name = v('ecName').trim();
+  var group = v('ecGroup').trim();
+  var limit = parseFloat(v('ecLimit')) || 0;
+  var balance = parseFloat(v('ecBalance')) || 0;
+  var dueDayRaw = v('ecDueDay');
+  var dueDay = dueDayRaw !== '' ? parseInt(dueDayRaw) : 0;
+  var notes = v('ecNotes').trim();
+  if (!name) { toast('Card name required.', 'error'); return; }
+  setLoading(true);
+  try {
+    var card = cards.find(function(c) { return c.id === editCardId; });
+    await fbPut('cards', editCardId, { name:name, group:group, limit:limit, balance:balance, dueDay:dueDay, notes:notes, uid:card.uid });
+    card.name = name; card.group = group; card.limit = limit; card.balance = balance; card.dueDay = dueDay; card.notes = notes;
+    closeModal('editCardModal');
+    renderCards(); renderSummary();
+    toast('Card updated!');
+  } catch(e) { console.error(e); toast('Failed.', 'error'); }
+  finally { setLoading(false); }
+}
 async function deleteCard(id) {
   if (!confirm('Delete this card?')) return;
   setLoading(true);
@@ -965,6 +1062,7 @@ function renderCards() {
     return '<div class="account-card">' +
       '<div class="acc-actions">' +
         (c.balance > 0 ? '<button class="icon-btn" onclick="payCard(\''+c.id+'\')" title="Record payment" style="color:var(--green);border-color:var(--green);margin-right:4px">&#x2714; Pay</button>' : '') +
+        '<button class="icon-btn" onclick="openEditCard(\''+c.id+'\')" title="Edit" style="margin-right:4px">&#x270F;&#xFE0F;</button>' +
         '<button class="icon-btn del" onclick="deleteCard(\''+c.id+'\')" title="Delete">&#x1F5D1;&#xFE0F;</button>' +
       '</div>' +
       '<div class="acc-name">'+escHtml(c.name)+'</div>' +
@@ -1008,15 +1106,18 @@ function renderCards() {
 // ── BILLS ──
 async function addBill() {
   var name=v('bName').trim(), category=v('bCategory'), amount=parseFloat(v('bAmount'))||0,
-      dueDay=parseInt(v('bDueDay'))||0, payment=v('bPayment'), notes=v('bNotes').trim();
+      dueDay=parseInt(v('bDueDay'))||0, payment=v('bPayment'), notes=v('bNotes').trim(),
+      fromAccount=v('bFromAccount');
   if (!name)   { toast('Bill name required.','error'); return; }
   if (!amount) { toast('Amount required.','error'); return; }
   setLoading(true);
   try {
-    var id = await fbPost('bills', { name:name, category:category, amount:amount, dueDay:dueDay, payment:payment, notes:notes, uid:currentUser.uid });
-    bills.push({ id:id, name:name, category:category, amount:amount, dueDay:dueDay, payment:payment, notes:notes, uid:currentUser.uid });
+    var id = await fbPost('bills', { name:name, category:category, amount:amount, dueDay:dueDay, payment:payment, fromAccount:fromAccount, notes:notes, uid:currentUser.uid });
+    bills.push({ id:id, name:name, category:category, amount:amount, dueDay:dueDay, payment:payment, fromAccount:fromAccount, notes:notes, uid:currentUser.uid });
     renderBills();
-    ['bName','bAmount','bDueDay','bNotes'].forEach(function(i) { sv(i,''); });
+    ['bName','bAmount','bDueDay','bNotes','bFromAccount'].forEach(function(i) { sv(i,''); });
+    var bWrap = document.getElementById('bFromAccountWrap');
+    if (bWrap) bWrap.style.display = 'none';
     toast('Bill added!');
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
@@ -1050,6 +1151,9 @@ function openEditBill(id) {
   document.getElementById('ebDueDay').value   = (bill.dueDay !== undefined && bill.dueDay !== null) ? bill.dueDay : '';
   document.getElementById('ebPayment').value  = bill.payment || '';
   document.getElementById('ebNotes').value    = bill.notes || '';
+  onEditBillPaymentChange();
+  var ebFromSel = document.getElementById('ebFromAccount');
+  if (ebFromSel && bill.fromAccount) ebFromSel.value = bill.fromAccount;
   document.getElementById('editBillModal').classList.remove('hidden');
 }
 async function saveEditBill() {
@@ -1060,12 +1164,13 @@ async function saveEditBill() {
   var amount   = parseFloat(document.getElementById('ebAmount').value) || 0;
   var dueDay   = parseInt(document.getElementById('ebDueDay').value) || 0;
   var payment  = document.getElementById('ebPayment').value;
+  var fromAccount = document.getElementById('ebFromAccount') ? document.getElementById('ebFromAccount').value : '';
   var notes    = document.getElementById('ebNotes').value.trim();
   if (!name)   { toast('Bill name required.', 'error'); return; }
   if (!amount) { toast('Amount required.', 'error'); return; }
   setLoading(true);
   try {
-    var updated = { name:name, category:category, amount:amount, dueDay:dueDay, payment:payment, notes:notes, uid:bill.uid };
+    var updated = { name:name, category:category, amount:amount, dueDay:dueDay, payment:payment, fromAccount:fromAccount, notes:notes, uid:bill.uid };
     await fbPut('bills', editingBillId, updated);
     Object.assign(bill, updated);
     closeModal('editBillModal');
@@ -1108,20 +1213,259 @@ function renderBills() {
   ); }).join('');
 }
 
+// ── NET WORTH: ASSETS ──
+async function addAsset() {
+  var name = document.getElementById('assetName').value.trim();
+  var type = document.getElementById('assetType').value;
+  var value = parseFloat(document.getElementById('assetValue').value) || 0;
+  var notes = document.getElementById('assetNotes').value.trim();
+  if (!name)  { toast('Asset name required.', 'error'); return; }
+  if (!value) { toast('Value required.', 'error'); return; }
+  setLoading(true);
+  try {
+    var id = await fbPost('assets', { name:name, type:type, value:value, notes:notes, uid:currentUser.uid });
+    assets.push({ id:id, name:name, type:type, value:value, notes:notes, uid:currentUser.uid });
+    renderNetWorth();
+    ['assetName','assetValue','assetNotes'].forEach(function(i) { document.getElementById(i).value = ''; });
+    toast('Asset added!');
+  } catch(e) { console.error(e); toast('Failed.', 'error'); }
+  finally { setLoading(false); }
+}
+var editingAssetId = null;
+function openEditAsset(id) {
+  var a = assets.find(function(x) { return x.id === id; });
+  if (!a) return;
+  editingAssetId = id;
+  document.getElementById('eaAssetName').value  = a.name || '';
+  document.getElementById('eaAssetType').value  = a.type || '';
+  document.getElementById('eaAssetValue').value = a.value || '';
+  document.getElementById('eaAssetNotes').value = a.notes || '';
+  document.getElementById('editAssetModal').classList.remove('hidden');
+}
+async function saveEditAsset() {
+  var a = assets.find(function(x) { return x.id === editingAssetId; });
+  if (!a) return;
+  var name  = document.getElementById('eaAssetName').value.trim();
+  var type  = document.getElementById('eaAssetType').value;
+  var value = parseFloat(document.getElementById('eaAssetValue').value) || 0;
+  var notes = document.getElementById('eaAssetNotes').value.trim();
+  if (!name)  { toast('Asset name required.', 'error'); return; }
+  if (!value) { toast('Value required.', 'error'); return; }
+  setLoading(true);
+  try {
+    var updated = { name:name, type:type, value:value, notes:notes, uid:a.uid };
+    await fbPut('assets', editingAssetId, updated);
+    Object.assign(a, updated);
+    closeModal('editAssetModal');
+    renderNetWorth();
+    toast('Asset updated!');
+  } catch(e) { console.error(e); toast('Failed.', 'error'); }
+  finally { setLoading(false); }
+}
+async function deleteAsset(id) {
+  if (!confirm('Delete this asset?')) return;
+  setLoading(true);
+  try {
+    await fbDelete('assets', id);
+    assets = assets.filter(function(x) { return x.id !== id; });
+    renderNetWorth(); toast('Deleted.', 'error');
+  } catch(e) { console.error(e); toast('Failed.', 'error'); }
+  finally { setLoading(false); }
+}
+
+// ── NET WORTH: LIABILITIES ──
+async function addLiability() {
+  var name    = document.getElementById('liabName').value.trim();
+  var type    = document.getElementById('liabType').value;
+  var balance = parseFloat(document.getElementById('liabBalance').value) || 0;
+  var notes   = document.getElementById('liabNotes').value.trim();
+  if (!name)    { toast('Liability name required.', 'error'); return; }
+  if (!balance) { toast('Balance required.', 'error'); return; }
+  setLoading(true);
+  try {
+    var id = await fbPost('liabilities', { name:name, type:type, balance:balance, notes:notes, uid:currentUser.uid });
+    liabilities.push({ id:id, name:name, type:type, balance:balance, notes:notes, uid:currentUser.uid });
+    renderNetWorth();
+    ['liabName','liabBalance','liabNotes'].forEach(function(i) { document.getElementById(i).value = ''; });
+    toast('Liability added!');
+  } catch(e) { console.error(e); toast('Failed.', 'error'); }
+  finally { setLoading(false); }
+}
+var editingLiabId = null;
+function openEditLiab(id) {
+  var l = liabilities.find(function(x) { return x.id === id; });
+  if (!l) return;
+  editingLiabId = id;
+  document.getElementById('eLiabName').value    = l.name || '';
+  document.getElementById('eLiabType').value    = l.type || '';
+  document.getElementById('eLiabBalance').value = l.balance || '';
+  document.getElementById('eLiabNotes').value   = l.notes || '';
+  document.getElementById('editLiabModal').classList.remove('hidden');
+}
+async function saveEditLiab() {
+  var l = liabilities.find(function(x) { return x.id === editingLiabId; });
+  if (!l) return;
+  var name    = document.getElementById('eLiabName').value.trim();
+  var type    = document.getElementById('eLiabType').value;
+  var balance = parseFloat(document.getElementById('eLiabBalance').value) || 0;
+  var notes   = document.getElementById('eLiabNotes').value.trim();
+  if (!name)    { toast('Liability name required.', 'error'); return; }
+  if (!balance) { toast('Balance required.', 'error'); return; }
+  setLoading(true);
+  try {
+    var updated = { name:name, type:type, balance:balance, notes:notes, uid:l.uid };
+    await fbPut('liabilities', editingLiabId, updated);
+    Object.assign(l, updated);
+    closeModal('editLiabModal');
+    renderNetWorth();
+    toast('Liability updated!');
+  } catch(e) { console.error(e); toast('Failed.', 'error'); }
+  finally { setLoading(false); }
+}
+async function deleteLiability(id) {
+  if (!confirm('Delete this liability?')) return;
+  setLoading(true);
+  try {
+    await fbDelete('liabilities', id);
+    liabilities = liabilities.filter(function(x) { return x.id !== id; });
+    renderNetWorth(); toast('Deleted.', 'error');
+  } catch(e) { console.error(e); toast('Failed.', 'error'); }
+  finally { setLoading(false); }
+}
+function renderNetWorth() {
+  var myAccounts = accounts.filter(function(a) {
+    return a.members && currentUser && currentUser.uid && a.members[currentUser.uid];
+  });
+  var accountsTotal = myAccounts.reduce(function(s, a) { return s + (a.balance || 0); }, 0);
+  var cardsDebt     = cards.reduce(function(s, c) { return s + (c.balance || 0); }, 0);
+  var manualAssets  = assets.reduce(function(s, a) { return s + (a.value || 0); }, 0);
+  var manualLiabs   = liabilities.reduce(function(s, l) { return s + (l.balance || 0); }, 0);
+  var totalAssets   = accountsTotal + manualAssets;
+  var totalLiabs    = cardsDebt + manualLiabs;
+  var netWorth      = totalAssets - totalLiabs;
+
+  // Update nw-summary bar in Net Worth tab
+  var nwAt = document.getElementById('nwAssetsTotal');
+  var nwLt = document.getElementById('nwLiabilitiesTotal');
+  var nwNw = document.getElementById('nwNetWorth');
+  var alt  = document.getElementById('assetsListTotal');
+  var llt  = document.getElementById('liabsListTotal');
+  var nwAssetsSub = document.getElementById('nwAssetsSub');
+  var nwLiabsSub  = document.getElementById('nwLiabsSub');
+  if (nwAt) nwAt.textContent = fmt(totalAssets);
+  if (nwLt) nwLt.textContent = fmt(totalLiabs);
+  if (alt)  alt.textContent  = fmt(totalAssets);
+  if (llt)  llt.textContent  = fmt(totalLiabs);
+  if (nwAssetsSub) nwAssetsSub.textContent = 'Accounts: ' + fmt(accountsTotal) + '  +  Manual: ' + fmt(manualAssets);
+  if (nwLiabsSub)  nwLiabsSub.textContent  = 'Cards: ' + fmt(cardsDebt) + '  +  Manual: ' + fmt(manualLiabs);
+  if (nwNw) {
+    nwNw.textContent = fmt(netWorth);
+    nwNw.style.color = netWorth >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+
+  // Update summary row: Assets | Net Worth | Liabilities | Expenses
+  var nwTopRow = document.getElementById('nwTopRow');
+  if (nwTopRow) {
+    function makeNwCard(label, value, sublabel, color, tabTarget) {
+      var div = document.createElement('div');
+      div.className = 'card';
+      div.style.cursor = 'pointer';
+      div.title = 'Go to ' + tabTarget;
+      div.innerHTML =
+        '<div class="label">' + label + '</div>' +
+        '<div class="value" style="color:' + color + '">' + fmt(value) + '</div>' +
+        '<div class="sublabel">' + sublabel + '</div>';
+      div.addEventListener('click', function() {
+        var tabSel = document.getElementById('tabSelect');
+        if (tabSel) tabSel.value = tabTarget;
+        switchTab(tabTarget);
+      });
+      return div;
+    }
+    nwTopRow.innerHTML = '';
+    nwTopRow.appendChild(makeNwCard('Total Assets', totalAssets, 'Accounts + Manual assets', 'var(--green)', 'networth'));
+    nwTopRow.appendChild(makeNwCard('Net Worth', netWorth, 'Assets − Liabilities', netWorth >= 0 ? 'var(--green)' : 'var(--red)', 'networth'));
+    nwTopRow.appendChild(makeNwCard('Total Liabilities', totalLiabs, 'Card debt + Manual liabilities', 'var(--red)', 'networth'));
+    nwTopRow.appendChild(makeNwCard('Total Expenses', lastTotalExpense, 'All-time spending', 'var(--red)', 'transactions'));
+  }
+  var ag = document.getElementById('assetsGrid');
+  if (ag) {
+    if (!assets.length) {
+      ag.innerHTML = '<div class="empty-state">No assets added yet.</div>';
+    } else {
+      ag.innerHTML = assets.map(function(a) {
+        return '<div class="nw-card">' +
+          '<div class="nw-card-name">' + escHtml(a.name) + '</div>' +
+          '<div class="nw-card-meta">' + escHtml(a.type) + (a.notes ? ' &bull; ' + escHtml(a.notes) : '') + '</div>' +
+          '<div class="nw-card-value" style="color:var(--green)">' + fmt(a.value) + '</div>' +
+          '<div style="margin-top:10px;display:flex;gap:6px">' +
+            '<button class="icon-btn" onclick="openEditAsset(\'' + a.id + '\')" style="color:var(--blue);border-color:var(--blue)">&#x270F;&#xFE0F; Edit</button>' +
+            '<button class="icon-btn del" onclick="deleteAsset(\'' + a.id + '\')">&#x1F5D1;&#xFE0F; Delete</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+  }
+  var lg = document.getElementById('liabsGrid');
+  if (lg) {
+    if (!liabilities.length) {
+      lg.innerHTML = '<div class="empty-state">No liabilities added yet.</div>';
+    } else {
+      lg.innerHTML = liabilities.map(function(l) {
+        return '<div class="nw-card">' +
+          '<div class="nw-card-name">' + escHtml(l.name) + '</div>' +
+          '<div class="nw-card-meta">' + escHtml(l.type) + (l.notes ? ' &bull; ' + escHtml(l.notes) : '') + '</div>' +
+          '<div class="nw-card-value" style="color:var(--red)">' + fmt(l.balance) + '</div>' +
+          '<div style="margin-top:10px;display:flex;gap:6px">' +
+            '<button class="icon-btn" onclick="openEditLiab(\'' + l.id + '\')" style="color:var(--blue);border-color:var(--blue)">&#x270F;&#xFE0F; Edit</button>' +
+            '<button class="icon-btn del" onclick="deleteLiability(\'' + l.id + '\')">&#x1F5D1;&#xFE0F; Delete</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+  }
+}
+
 // ── CONTRIBUTIONS ──
+function onContribPaymentChange() {
+  _populateBillFromAccount('cPayment', 'cFromAccountWrap', 'cFromAccount', 'cFromAccountLabel');
+}
+function onEditContribPaymentChange() {
+  _populateBillFromAccount('ecPayment', 'ecFromAccountWrap', 'ecFromAccount', 'ecFromAccountLabel');
+}
 async function addContribution() {
   var name=v('cName').trim(), type=v('cType'), amount=parseFloat(v('cAmount'))||0,
-      dueDay=parseInt(v('cDueDay'))||0, lastPaid=v('cLastPaid'), notes=v('cNotes').trim();
+      dueDay=parseInt(v('cDueDay'))||0, notes=v('cNotes').trim(),
+      payment=v('cPayment'), fromAccount=v('cFromAccount');
   if (!name)   { toast('Name required.','error'); return; }
   if (!amount) { toast('Amount required.','error'); return; }
   setLoading(true);
   try {
-    var id = await fbPost('contributions', { name:name, type:type, amount:amount, dueDay:dueDay, lastPaid:lastPaid, notes:notes, uid:currentUser.uid });
-    contributions.push({ id:id, name:name, type:type, amount:amount, dueDay:dueDay, lastPaid:lastPaid, notes:notes, uid:currentUser.uid });
+    var id = await fbPost('contributions', { name:name, type:type, amount:amount, dueDay:dueDay, notes:notes, payment:payment, fromAccount:fromAccount, uid:currentUser.uid });
+    contributions.push({ id:id, name:name, type:type, amount:amount, dueDay:dueDay, notes:notes, payment:payment, fromAccount:fromAccount, uid:currentUser.uid });
     renderContributions();
-    ['cName','cAmount','cDueDay','cLastPaid','cNotes'].forEach(function(i) { sv(i,''); });
+    ['cName','cAmount','cDueDay','cNotes','cPayment','cFromAccount'].forEach(function(i) { sv(i,''); });
+    document.getElementById('cFromAccountWrap').style.display = 'none';
     toast('Contribution added!');
   } catch(e) { console.error(e); toast('Failed.','error'); }
+  finally { setLoading(false); }
+}
+async function payContrib(id) {
+  var contrib = contributions.find(function(c) { return c.id === id; });
+  if (!contrib) return;
+  var input = window.prompt('Payment amount for ' + contrib.name + '?', (contrib.amount || 0).toFixed(2));
+  if (input === null) return;
+  var amount = parseFloat(input);
+  if (isNaN(amount) || amount <= 0) { toast('Invalid amount.', 'error'); return; }
+  if (!activeAccountId) { toast('Select an account first.', 'error'); return; }
+  setLoading(true);
+  try {
+    var tx = { date:todayStr(), type:'Expense', category:'Gov Contribution', payment:contrib.payment||'', paidBy:(currentUser.displayName||currentUser.email||''), fromAccount:contrib.fromAccount||'', desc:'Contribution \u2014 '+contrib.name, amountIn:0, amountOut:amount, accountId:activeAccountId };
+    var txId = await fbPost('transactions', tx);
+    transactions.push(Object.assign({}, tx, { id:txId }));
+    renderSummary(); renderTable();
+    toast('Payment of ' + fmt(amount) + ' recorded for ' + contrib.name + '!');
+  } catch(e) { console.error(e); toast('Failed to record payment.', 'error'); }
   finally { setLoading(false); }
 }
 async function deleteContribution(id) {
@@ -1134,20 +1478,78 @@ async function deleteContribution(id) {
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
 }
+var editContribId = null;
+function openEditContrib(id) {
+  var c = contributions.find(function(x) { return x.id === id; });
+  if (!c) return;
+  editContribId = id;
+  sv('ecName', c.name);
+  sv('ecType', c.type);
+  sv('ecAmount', c.amount || 0);
+  sv('ecDueDay', c.dueDay !== undefined && c.dueDay !== null ? c.dueDay : '');
+  sv('ecPayment', c.payment || '');
+  sv('ecNotes', c.notes || '');
+  // Populate from account if payment set
+  _populateBillFromAccount('ecPayment', 'ecFromAccountWrap', 'ecFromAccount', 'ecFromAccountLabel');
+  // Restore saved fromAccount selection after populating
+  if (c.fromAccount) {
+    var sel = document.getElementById('ecFromAccount');
+    if (sel) sel.value = c.fromAccount;
+  }
+  document.getElementById('editContribModal').classList.remove('hidden');
+}
+async function saveEditContrib() {
+  var name = v('ecName').trim();
+  var type = v('ecType');
+  var amount = parseFloat(v('ecAmount')) || 0;
+  var dueDayRaw = v('ecDueDay');
+  var dueDay = dueDayRaw !== '' ? parseInt(dueDayRaw) : 0;
+  var payment = v('ecPayment');
+  var fromAccount = v('ecFromAccount');
+  var notes = v('ecNotes').trim();
+  if (!name)   { toast('Name required.', 'error'); return; }
+  if (!amount) { toast('Amount required.', 'error'); return; }
+  setLoading(true);
+  try {
+    var c = contributions.find(function(x) { return x.id === editContribId; });
+    await fbPut('contributions', editContribId, { name:name, type:type, amount:amount, dueDay:dueDay, notes:notes, payment:payment, fromAccount:fromAccount, uid:c.uid });
+    c.name=name; c.type=type; c.amount=amount; c.dueDay=dueDay; c.notes=notes; c.payment=payment; c.fromAccount=fromAccount;
+    closeModal('editContribModal');
+    renderContributions();
+    toast('Contribution updated!');
+  } catch(e) { console.error(e); toast('Failed.', 'error'); }
+  finally { setLoading(false); }
+}
 function renderContributions() {
   var grid = document.getElementById('contribGrid');
   var total = contributions.reduce(function(s,c) { return s+(c.amount||0); }, 0);
   document.getElementById('contribTotal').textContent = fmt(total);
   if (!contributions.length) { grid.innerHTML='<div class="empty-state">No contributions yet.</div>'; return; }
-  grid.innerHTML = contributions.map(function(c) { return (
+  grid.innerHTML = contributions.map(function(c) {
+    var fromName = '';
+    if (c.fromAccount) {
+      if (c.fromAccount.indexOf('card:') === 0) {
+        var cardId = c.fromAccount.slice(5);
+        var foundCard = cards.find(function(x) { return x.id === cardId; });
+        fromName = foundCard ? foundCard.name : c.fromAccount;
+      } else {
+        var foundAcct = accounts.find(function(x) { return x.id === c.fromAccount; });
+        fromName = foundAcct ? foundAcct.name : c.fromAccount;
+      }
+    }
+    return (
     '<div class="contrib-card">' +
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">' +
       '<div><strong>'+escHtml(c.name)+'</strong> <span style="font-size:.75rem;color:var(--purple);background:rgba(168,85,247,.15);padding:2px 8px;border-radius:20px">'+escHtml(c.type)+'</span></div>' +
-      '<button class="icon-btn del" onclick="deleteContribution(\''+c.id+'\')">&#x1F5D1;&#xFE0F;</button>' +
+      '<div style="display:flex;gap:4px">' +
+        '<button class="icon-btn" onclick="payContrib(\''+c.id+'\')" title="Record payment" style="color:var(--green);border-color:var(--green)">&#x2714; Pay</button>' +
+        '<button class="icon-btn" onclick="openEditContrib(\''+c.id+'\')" title="Edit">&#x270F;&#xFE0F;</button>' +
+        '<button class="icon-btn del" onclick="deleteContribution(\''+c.id+'\')">&#x1F5D1;&#xFE0F;</button>' +
+      '</div>' +
     '</div>' +
     '<div style="font-size:1.15rem;font-weight:700;color:var(--purple)">'+fmt(c.amount)+'<span style="font-size:.72rem;color:var(--text-muted);font-weight:400"> /mo</span></div>' +
     (c.dueDay !== undefined && c.dueDay !== '' ? '<div style="font-size:.78rem;color:var(--text-muted);margin-top:4px">Due: '+fmtDueDay(c.dueDay)+'</div>' : '') +
-    (c.lastPaid?'<div style="font-size:.78rem;color:var(--text-muted)">Last paid: '+fmtDate(c.lastPaid)+'</div>':'') +
+    (c.payment?'<div style="font-size:.78rem;color:var(--text-muted)">Payment: '+escHtml(c.payment)+(fromName?' &rsaquo; '+escHtml(fromName):'')+'</div>':'') +
     (c.notes?'<div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">'+escHtml(c.notes)+'</div>':'') +
     '</div>'
   ); }).join('');
@@ -1156,16 +1558,15 @@ function renderContributions() {
 // ── GOALS ──
 async function addGoal() {
   var name=v('gName').trim(), target=parseFloat(v('gTarget'))||0,
-      saved=parseFloat(v('gSaved'))||0, monthly=parseFloat(v('gMonthly'))||0,
       accountId=v('gAccount'), notes=v('gNotes').trim();
   if (!name)   { toast('Goal name required.','error'); return; }
   if (!target) { toast('Target amount required.','error'); return; }
   setLoading(true);
   try {
-    var id = await fbPost('goals', { name:name, target:target, saved:saved, monthly:monthly, accountId:accountId||'', notes:notes, uid:currentUser.uid });
-    goals.push({ id:id, name:name, target:target, saved:saved, monthly:monthly, accountId:accountId||'', notes:notes, uid:currentUser.uid });
+    var id = await fbPost('goals', { name:name, target:target, accountId:accountId||'', notes:notes, uid:currentUser.uid });
+    goals.push({ id:id, name:name, target:target, accountId:accountId||'', notes:notes, uid:currentUser.uid });
     renderGoals();
-    ['gName','gTarget','gSaved','gMonthly','gNotes'].forEach(function(i) { sv(i,''); });
+    ['gName','gTarget','gNotes'].forEach(function(i) { sv(i,''); });
     sv('gAccount','');
     toast('Goal added!');
   } catch(e) { console.error(e); toast('Failed.','error'); }
@@ -1185,30 +1586,26 @@ function renderGoals() {
   var grid = document.getElementById('goalsGrid');
   if (!goals.length) { grid.innerHTML='<div class="empty-state">No goals yet.</div>'; return; }
   grid.innerHTML = goals.map(function(g) {
-    var pct = g.target ? Math.min(100,(g.saved/g.target)*100) : 0;
-    var rem = Math.max(0, g.target - g.saved);
-    var months = g.monthly > 0 ? Math.ceil(rem/g.monthly) : null;
-    // Linked account info
+    // Use linked account balance as saved amount for progress bar
+    var acct = g.accountId ? accounts.find(function(a) { return a.id === g.accountId; }) : null;
+    var saved = acct ? (acct.balance || 0) : 0;
+    var pct = g.target ? Math.min(100, (saved / g.target) * 100) : 0;
+    var stillNeeded = Math.max(0, g.target - saved);
     var acctHtml = '';
-    if (g.accountId) {
-      var acct = accounts.find(function(a) { return a.id === g.accountId; });
-      if (acct) {
-        var acctBal = acct.balance || 0;
-        var stillNeeded = Math.max(0, rem - acctBal);
-        acctHtml =
-          '<div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,.04);border-radius:6px;font-size:.78rem">' +
-            '<div style="display:flex;justify-content:space-between;margin-bottom:3px">' +
-              '<span style="color:var(--text-muted)">&#x1F4B0; ' + escHtml(acct.name) + '</span>' +
-              '<span style="color:var(--cyan)">' + fmt(acctBal) + ' available</span>' +
-            '</div>' +
-            '<div style="display:flex;justify-content:space-between">' +
-              '<span style="color:var(--text-muted)">Still needed</span>' +
-              '<span style="color:' + (stillNeeded === 0 ? 'var(--green)' : 'var(--orange)') + ';font-weight:600">' +
-                (stillNeeded === 0 ? '&#x2714; Funded!' : fmt(stillNeeded) + ' more') +
-              '</span>' +
-            '</div>' +
-          '</div>';
-      }
+    if (acct) {
+      acctHtml =
+        '<div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,.04);border-radius:6px;font-size:.78rem">' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:3px">' +
+            '<span style="color:var(--text-muted)">&#x1F4B0; ' + escHtml(acct.name) + '</span>' +
+            '<span style="color:var(--cyan)">' + fmt(saved) + ' available</span>' +
+          '</div>' +
+          '<div style="display:flex;justify-content:space-between">' +
+            '<span style="color:var(--text-muted)">Still needed</span>' +
+            '<span style="color:' + (stillNeeded === 0 ? 'var(--green)' : 'var(--orange)') + ';font-weight:600">' +
+              (stillNeeded === 0 ? '&#x2714; Funded!' : fmt(stillNeeded) + ' more') +
+            '</span>' +
+          '</div>' +
+        '</div>';
     }
     return (
       '<div class="goal-card">' +
@@ -1218,11 +1615,10 @@ function renderGoals() {
       '</div>' +
       '<div class="goal-bar-wrap"><div class="goal-bar" style="width:'+pct+'%"></div></div>' +
       '<div class="goal-meta">' +
-        '<span>'+fmt(g.saved)+' saved</span>' +
+        '<span>'+fmt(saved)+' saved</span>' +
         '<span>'+pct.toFixed(0)+'%</span>' +
         '<span>Goal: '+fmt(g.target)+'</span>' +
       '</div>' +
-      (months!==null?'<div style="font-size:.75rem;color:var(--text-muted);margin-top:6px">~'+months+' month'+(months!==1?'s':'')+' to go at '+fmt(g.monthly)+'/mo</div>':'') +
       acctHtml +
       (g.notes?'<div style="font-size:.75rem;color:var(--text-muted);margin-top:4px">'+escHtml(g.notes)+'</div>':'') +
       '</div>'
@@ -1339,6 +1735,7 @@ function renderSummary() {
     return t.accountId && myAccountIds[t.accountId];
   });
   myTransactions.forEach(function(t) { totalOut += (t.amountOut||0); });
+  lastTotalExpense = totalOut;
   document.getElementById('totalExpense').textContent = fmt(totalOut);
 
   var accountsRow = document.getElementById('accountsRow');
@@ -1369,8 +1766,8 @@ function renderSummary() {
   }
 
   // Bank / wallet accounts row
-  myAccounts.forEach(function(a, idx) {
-    var color = ACCENT_COLORS[idx % ACCENT_COLORS.length];
+  myAccounts.forEach(function(a) {
+    var color = acctTypeColor(a.type);
     accountsRow.appendChild(makeCard(
       escHtml(a.name),
       fmt(a.balance||0),
@@ -1406,6 +1803,7 @@ function renderSummary() {
   // Remove old style hack if present
   var old = document.getElementById('acct-summary-style');
   if (old) old.remove();
+  renderNetWorth();
 }
 
 // ── REFRESH ALL ──
@@ -1437,6 +1835,7 @@ function refreshAll() {
   renderIncomeSources();
   renderHealth();
   renderMembers();
+  renderNetWorth();
   restoreTab();
 }
 
@@ -1475,12 +1874,14 @@ auth.onAuthStateChanged(async function(user) {
       var results = await Promise.all([
         safeFbGet('transactions'), safeFbGet('accounts'), safeFbGet('cards'),
         safeFbGet('bills'), safeFbGet('contributions'), safeFbGet('goals'),
-        safeFbGet('incomeSources'), safeFbGet('healthItems')
+        safeFbGet('incomeSources'), safeFbGet('healthItems'),
+        safeFbGet('assets'), safeFbGet('liabilities')
       ]);
       transactions=results[0]; accounts=results[1];
       cards=filterByUid(results[2]); bills=filterByUid(results[3]);
       contributions=filterByUid(results[4]); goals=filterByUid(results[5]);
       incomeSources=filterByUid(results[6]); healthItems=filterByUid(results[7]);
+      assets=filterByUid(results[8]); liabilities=filterByUid(results[9]);
     } catch(e) {
       console.error(e);
       toast('Could not load data from Firebase.','error');
@@ -1512,7 +1913,23 @@ var editBillModal = document.getElementById('editBillModal');
 if (editBillModal) {
   editBillModal.addEventListener('click', function(e) { if(e.target===this) closeModal('editBillModal'); });
 }
-document.addEventListener('keydown', function(e) { if(e.key==='Escape') { closeModal('editModal'); closeModal('editBillModal'); } });
+var editAssetModal = document.getElementById('editAssetModal');
+if (editAssetModal) {
+  editAssetModal.addEventListener('click', function(e) { if(e.target===this) closeModal('editAssetModal'); });
+}
+var editLiabModal = document.getElementById('editLiabModal');
+if (editLiabModal) {
+  editLiabModal.addEventListener('click', function(e) { if(e.target===this) closeModal('editLiabModal'); });
+}
+var editCardModal = document.getElementById('editCardModal');
+if (editCardModal) {
+  editCardModal.addEventListener('click', function(e) { if(e.target===this) closeModal('editCardModal'); });
+}
+var editContribModal = document.getElementById('editContribModal');
+if (editContribModal) {
+  editContribModal.addEventListener('click', function(e) { if(e.target===this) closeModal('editContribModal'); });
+}
+document.addEventListener('keydown', function(e) { if(e.key==='Escape') { closeModal('editModal'); closeModal('editBillModal'); closeModal('editAssetModal'); closeModal('editLiabModal'); closeModal('editCardModal'); closeModal('editContribModal'); } });
 
 function toggleProfileDropdown() {
   var dd = document.getElementById('profileDropdown');

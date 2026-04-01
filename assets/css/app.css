@@ -24,7 +24,8 @@ body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui
 .login-error { color:var(--red); font-size:.82rem; margin-top:14px; min-height:20px; }
 
 /* Header */
-header { text-align:center; margin-bottom:24px; }
+header { display:flex; align-items:center; justify-content:space-between; margin:0 auto 24px; padding:0 4px; max-width:1100px; width:100%; }
+.header-title { display:flex; flex-direction:column; }
 header h1 { font-size:2rem; font-weight:700; letter-spacing:-.5px; }
 header h1 span { color:var(--blue); }
 header p { color:var(--text-muted); margin-top:4px; font-size:.9rem; }
@@ -46,16 +47,16 @@ header p { color:var(--text-muted); margin-top:4px; font-size:.9rem; }
 .profile-dropdown button.signout:hover { background:rgba(239,68,68,.1); }
 
 /* Summary Cards */
-.summary-wrap { max-width:1100px; margin:0 auto 24px; display:flex; flex-direction:column; gap:14px; }
-.summary-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+.summary-wrap { max-width:1100px; margin:0 auto 20px; display:flex; flex-direction:column; gap:10px; }
+.summary-row { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
 .summary-row:empty { display:none; }
-.summary-full { display:grid; grid-template-columns:1fr; gap:14px; }
-@media(max-width:700px){ .summary-row { grid-template-columns:repeat(2,1fr); } }
-@media(max-width:440px){ .summary-row { grid-template-columns:1fr; } }.card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; position:relative; overflow:hidden; }
+.summary-full { display:grid; grid-template-columns:1fr; gap:10px; }
+@media(max-width:900px){ .summary-row { grid-template-columns:repeat(3,1fr); } }
+@media(max-width:600px){ .summary-row { grid-template-columns:repeat(2,1fr); } }.card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; position:relative; overflow:hidden; }
 .card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
-.card .label { font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:var(--text-muted); margin-bottom:6px; font-weight:600; }
-.card .sublabel { font-size:.7rem; color:var(--text-muted); margin-top:4px; opacity:.7; }
-.card .value { font-size:1.55rem; font-weight:700; }
+.card .label { font-size:.68rem; text-transform:uppercase; letter-spacing:.1em; color:var(--text-muted); margin-bottom:4px; font-weight:600; }
+.card .sublabel { font-size:.65rem; color:var(--text-muted); margin-top:3px; opacity:.7; }
+.card .value { font-size:1.25rem; font-weight:700; }
 .card.net-balance .value    { color:var(--blue); }    .card.net-balance::before    { background:var(--blue); }
 .card.monthly-income .value { color:var(--green); }   .card.monthly-income::before { background:var(--green); }
 .card.bank-balance .value   { color:var(--cyan); }    .card.bank-balance::before   { background:var(--cyan); }
@@ -146,11 +147,11 @@ tbody td { padding:11px 14px; vertical-align:middle; }
 
 /* Account cards */
 .accounts-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:14px; }
-.account-card { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; position:relative; }
-.account-card .acc-actions { position:absolute; top:10px; right:10px; display:flex; gap:4px; }
-.account-card .acc-name { font-size:.8rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.07em; margin-bottom:4px; }
-.account-card .acc-balance { font-size:1.4rem; font-weight:700; color:var(--cyan); }
-.account-card .acc-type { font-size:.7rem; color:var(--text-muted); margin-top:4px; }
+.account-card { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; position:relative; }
+.account-card .acc-actions { position:absolute; top:7px; right:7px; display:flex; gap:4px; }
+.account-card .acc-name { font-size:.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.07em; margin-bottom:2px; }
+.account-card .acc-balance { font-size:1.1rem; font-weight:700; color:var(--cyan); }
+.account-card .acc-type { font-size:.65rem; color:var(--text-muted); margin-top:2px; }
 .card-group-tag { display:inline-block; font-size:.65rem; background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:0 5px; margin-left:6px; color:var(--text-muted); text-transform:none; letter-spacing:0; vertical-align:middle; }
 .card-combined { border-color:var(--orange); }
 .card-combined-list { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; padding-top:8px; border-top:1px solid var(--border); font-size:.72rem; color:var(--text-muted); }
@@ -190,6 +191,22 @@ tbody td { padding:11px 14px; vertical-align:middle; }
 /* Contributions */
 .contrib-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
 .contrib-card { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; }
+
+/* Net Worth */
+.nw-summary { display:grid; grid-template-columns:1fr auto 1fr auto 1fr; align-items:center; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px 24px; gap:0; }
+.nw-summary-item { text-align:center; }
+.nw-summary-label { font-size:.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+.nw-summary-value { font-size:1.4rem; font-weight:700; }
+.nw-summary-divider { width:1px; background:var(--border); height:48px; margin:0 16px; }
+.nw-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }
+.nw-card { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; }
+.nw-card-name { font-weight:600; font-size:.9rem; margin-bottom:4px; }
+.nw-card-meta { font-size:.78rem; color:var(--text-muted); margin-bottom:8px; }
+.nw-card-value { font-size:1.1rem; font-weight:700; }
+@media(max-width:600px) {
+  .nw-summary { grid-template-columns:1fr; grid-template-rows:auto; gap:12px; }
+  .nw-summary-divider { width:100%; height:1px; margin:0; }
+}
 
 /* Modal */
 .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.65); display:flex; align-items:center; justify-content:center; z-index:100; padding:16px; }

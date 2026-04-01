@@ -33,8 +33,10 @@
 <div id="appContent" class="hidden">
 
 <header>
-  <h1>Earnings <span>Tracker</span></h1>
-  <p>Personal finance dashboard</p>
+  <div class="header-title">
+    <h1>Earnings <span>Tracker</span></h1>
+    <p>Personal finance dashboard</p>
+  </div>
   <div class="user-bar hidden" id="userBar">
     <div class="profile-dropdown-wrap" id="profileDropdownWrap">
       <img class="user-avatar" id="userAvatar" src="" alt="" onclick="toggleProfileDropdown()" />
@@ -52,13 +54,8 @@
 <div class="summary-wrap" id="summaryGrid">
   <div class="summary-row" id="accountsRow"></div>
   <div class="summary-row" id="cardsRow"></div>
-  <div class="summary-full">
-    <div class="card total-expense">
-      <div class="label">Total Expenses</div>
-      <div class="value" id="totalExpense">&#x20B1;0.00</div>
-      <div class="sublabel">All-time spending</div>
-    </div>
-  </div>
+  <div class="summary-row" id="nwTopRow"></div>
+  <span id="totalExpense" style="display:none">&#x20B1;0.00</span>
 </div>
 
 <!-- Tabs -->
@@ -74,6 +71,7 @@
       <option value="incomes">&#x1F4BC; Income Sources</option>
       <option value="health">&#x1F3E5; Health &amp; Insurance</option>
       <option value="members">&#x1F465; Members</option>
+      <option value="networth">&#x2696;&#xFE0F; Net Worth</option>
     </select>
   </div>
 </div>
@@ -90,7 +88,7 @@
         <select id="fCategory" onchange="onCategoryChange()"><option value="">&#x2014; Select Type First &#x2014;</option></select></div>
       <div class="form-group" id="fPaymentWrap"><label for="fPayment">Payment Method</label>
         <select id="fPayment" onchange="onPaymentMethodChange()"><option value="">&#x2014; Select &#x2014;</option>
-          <option>Cash</option><option>Credit Card</option><option>GCash</option><option>Maya</option><option>ShopeePay</option><option>Bank Transfer</option><option>Other</option>
+          <option>Cash</option><option>Credit Card</option><option>GCash</option><option>GrabPay</option><option>Bank Transfer</option><option>Other</option>
         </select></div>
       <div class="form-group" id="fPaidByWrap"><label for="fPaidBy">Paid by</label><select id="fPaidBy"><option value="">&#x2014; Select &#x2014;</option></select></div>
       <div class="form-group" id="fFromAccountWrap" style="display:none"><label id="fFromAccountLabel" for="fFromAccount">From Account</label><select id="fFromAccount"><option value="">&#x2014; Select &#x2014;</option></select></div>
@@ -205,7 +203,8 @@
       <div class="form-group"><label>Due Date</label>
         <select id="bDueDay"><option value="">&#x2014; Select &#x2014;</option><option value="15">15th (Mid-month)</option><option value="0">End of Month</option></select></div>
       <div class="form-group"><label>Payment Method</label>
-        <select id="bPayment"><option value="">&#x2014; Select &#x2014;</option><option>Cash</option><option>BDO Online</option><option>AMEX Credit Card</option><option>GCash</option><option>Maya</option><option>Bank Transfer</option><option>Auto-debit</option><option>Other</option></select></div>
+        <select id="bPayment" onchange="onBillPaymentChange()"><option value="">&#x2014; Select &#x2014;</option><option>Cash</option><option>Credit Card</option><option>GCash</option><option>GrabPay</option><option>Bank Transfer</option><option>Other</option></select></div>
+      <div class="form-group" id="bFromAccountWrap" style="display:none"><label id="bFromAccountLabel" for="bFromAccount">From Account</label><select id="bFromAccount"><option value="">&#x2014; Select &#x2014;</option></select></div>
       <div class="form-group"><label>Notes</label><input type="text" id="bNotes" placeholder="Optional" /></div>
     </div>
     <div class="form-actions"><button class="btn btn-primary" onclick="addBill()">+ Add Bill</button></div>
@@ -230,7 +229,9 @@
       <div class="form-group"><label>Amount (&#x20B1;) *</label><input type="number" id="cAmount" min="0" step="0.01" placeholder="0.00" /></div>
       <div class="form-group"><label>Due Date</label>
         <select id="cDueDay"><option value="">&#x2014; Select &#x2014;</option><option value="15">15th (Mid-month)</option><option value="0">End of Month</option></select></div>
-      <div class="form-group"><label>Last Paid Date</label><input type="date" id="cLastPaid" /></div>
+      <div class="form-group"><label>Payment Method</label>
+        <select id="cPayment" onchange="onContribPaymentChange()"><option value="">&#x2014; Select &#x2014;</option><option>Cash</option><option>Credit Card</option><option>GCash</option><option>GrabPay</option><option>Bank Transfer</option><option>Other</option></select></div>
+      <div class="form-group" id="cFromAccountWrap" style="display:none"><label id="cFromAccountLabel" for="cFromAccount">From Account</label><select id="cFromAccount"><option value="">&#x2014; Select &#x2014;</option></select></div>
       <div class="form-group"><label>Notes</label><input type="text" id="cNotes" placeholder="Optional" /></div>
     </div>
     <div class="form-actions"><button class="btn btn-primary" onclick="addContribution()">+ Add Contribution</button></div>
@@ -251,8 +252,6 @@
     <div class="form-grid">
       <div class="form-group"><label>Goal Name *</label><input type="text" id="gName" placeholder="e.g. Land for parents" /></div>
       <div class="form-group"><label>Target Amount (&#x20B1;) *</label><input type="number" id="gTarget" min="0" step="0.01" placeholder="0.00" /></div>
-      <div class="form-group"><label>Amount Already Saved (&#x20B1;)</label><input type="number" id="gSaved" min="0" step="0.01" placeholder="0.00" /></div>
-      <div class="form-group"><label>Monthly Contribution (&#x20B1;)</label><input type="number" id="gMonthly" min="0" step="0.01" placeholder="0.00" /></div>
       <div class="form-group"><label>Linked Account <span style="color:var(--text-muted);font-weight:400;font-size:.72rem">(optional)</span></label><select id="gAccount"><option value="">&#x2014; None &#x2014;</option></select></div>
       <div class="form-group full"><label>Notes</label><input type="text" id="gNotes" placeholder="Optional" /></div>
     </div>
@@ -299,7 +298,7 @@
       <div class="form-group"><label>Last Payment Date</label><input type="date" id="hLastPaid" /></div>
       <div class="form-group"><label>Renewal / Due Date</label><input type="date" id="hRenewal" /></div>
       <div class="form-group"><label>Payment Method</label>
-        <select id="hPayment"><option value="">&#x2014; Select &#x2014;</option><option>Cash</option><option>GCash</option><option>BDO Credit Card</option><option>AMEX Credit Card</option><option>RCBC Credit Card</option><option>Bank Transfer</option><option>Auto-debit</option><option>Other</option></select></div>
+        <select id="hPayment"><option value="">&#x2014; Select &#x2014;</option><option>Cash</option><option>Credit Card</option><option>GCash</option><option>GrabPay</option><option>Bank Transfer</option><option>Other</option></select></div>
       <div class="form-group full"><label>Notes</label><input type="text" id="hNotes" placeholder="Optional" /></div>
     </div>
     <div class="form-actions"><button class="btn btn-primary" onclick="addHealth()">+ Add Entry</button></div>
@@ -323,6 +322,166 @@
   </div>
 </div>
 
+<!-- TAB: NET WORTH -->
+<div class="panel" id="tab-networth">
+
+  <!-- Net Worth Summary Bar -->
+  <div class="nw-summary">
+    <div class="nw-summary-item">
+      <div class="nw-summary-label">Total Assets</div>
+      <div class="nw-summary-value" id="nwAssetsTotal" style="color:var(--green)">&#x20B1;0.00</div>
+      <div id="nwAssetsSub" style="font-size:.7rem;color:var(--text-muted);margin-top:4px"></div>
+    </div>
+    <div class="nw-summary-divider"></div>
+    <div class="nw-summary-item">
+      <div class="nw-summary-label">Total Liabilities</div>
+      <div class="nw-summary-value" id="nwLiabilitiesTotal" style="color:var(--red)">&#x20B1;0.00</div>
+      <div id="nwLiabsSub" style="font-size:.7rem;color:var(--text-muted);margin-top:4px"></div>
+    </div>
+    <div class="nw-summary-divider"></div>
+    <div class="nw-summary-item">
+      <div class="nw-summary-label">Net Worth</div>
+      <div class="nw-summary-value" id="nwNetWorth">&#x20B1;0.00</div>
+    </div>
+  </div>
+
+  <!-- Add Asset -->
+  <div class="form-panel">
+    <h2>&#x1F4B0; Add Asset</h2>
+    <div class="form-grid">
+      <div class="form-group"><label>Asset Name *</label><input type="text" id="assetName" placeholder="e.g. BDO Savings, House" /></div>
+      <div class="form-group"><label>Type</label>
+        <select id="assetType">
+          <option>Cash / Bank</option><option>Real Estate</option><option>Vehicle</option>
+          <option>Investment</option><option>Personal Property</option><option>Other</option>
+        </select></div>
+      <div class="form-group"><label>Value (&#x20B1;) *</label><input type="number" id="assetValue" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Notes</label><input type="text" id="assetNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="addAsset()">+ Add Asset</button></div>
+  </div>
+
+  <!-- Add Liability -->
+  <div class="form-panel">
+    <h2>&#x1F4B8; Add Liability</h2>
+    <div class="form-grid">
+      <div class="form-group"><label>Liability Name *</label><input type="text" id="liabName" placeholder="e.g. BDO Home Loan, AMEX Card" /></div>
+      <div class="form-group"><label>Type</label>
+        <select id="liabType">
+          <option>Home Loan / Mortgage</option><option>Car Loan</option><option>Personal Loan</option>
+          <option>Credit Card Debt</option><option>Other</option>
+        </select></div>
+      <div class="form-group"><label>Balance Owed (&#x20B1;) *</label><input type="number" id="liabBalance" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Notes</label><input type="text" id="liabNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" style="background:var(--red)" onclick="addLiability()">+ Add Liability</button></div>
+  </div>
+
+  <!-- Assets List -->
+  <div class="section-panel">
+    <div class="section-header">
+      <h2>&#x1F4B0; My Assets</h2>
+      <div style="font-size:.85rem;color:var(--text-muted)">Total: <strong id="assetsListTotal" style="color:var(--green)">&#x20B1;0.00</strong></div>
+    </div>
+    <div class="section-body"><div class="nw-grid" id="assetsGrid"><div class="empty-state">No assets added yet.</div></div></div>
+  </div>
+
+  <!-- Liabilities List -->
+  <div class="section-panel">
+    <div class="section-header">
+      <h2>&#x1F4B8; My Liabilities</h2>
+      <div style="font-size:.85rem;color:var(--text-muted)">Total: <strong id="liabsListTotal" style="color:var(--red)">&#x20B1;0.00</strong></div>
+    </div>
+    <div class="section-body"><div class="nw-grid" id="liabsGrid"><div class="empty-state">No liabilities added yet.</div></div></div>
+  </div>
+
+</div>
+
+<!-- EDIT ASSET MODAL -->
+<div class="modal-overlay hidden" id="editAssetModal">
+  <div class="modal" style="max-width:480px;width:100%">
+    <h2>Edit Asset</h2>
+    <div class="form-grid" style="margin-top:14px">
+      <div class="form-group full"><label>Asset Name *</label><input type="text" id="eaAssetName" placeholder="e.g. BDO Savings, House" /></div>
+      <div class="form-group"><label>Type</label>
+        <select id="eaAssetType">
+          <option>Cash / Bank</option><option>Real Estate</option><option>Vehicle</option>
+          <option>Investment</option><option>Personal Property</option><option>Other</option>
+        </select></div>
+      <div class="form-group"><label>Value (&#x20B1;) *</label><input type="number" id="eaAssetValue" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group full"><label>Notes</label><input type="text" id="eaAssetNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-primary" onclick="saveEditAsset()">Save Changes</button>
+      <button class="btn btn-ghost" onclick="closeModal('editAssetModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT LIABILITY MODAL -->
+<div class="modal-overlay hidden" id="editLiabModal">
+  <div class="modal" style="max-width:480px;width:100%">
+    <h2>Edit Liability</h2>
+    <div class="form-grid" style="margin-top:14px">
+      <div class="form-group full"><label>Liability Name *</label><input type="text" id="eLiabName" placeholder="e.g. BDO Home Loan" /></div>
+      <div class="form-group"><label>Type</label>
+        <select id="eLiabType">
+          <option>Home Loan / Mortgage</option><option>Car Loan</option><option>Personal Loan</option>
+          <option>Credit Card Debt</option><option>Other</option>
+        </select></div>
+      <div class="form-group"><label>Balance Owed (&#x20B1;) *</label><input type="number" id="eLiabBalance" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group full"><label>Notes</label><input type="text" id="eLiabNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-primary" onclick="saveEditLiab()">Save Changes</button>
+      <button class="btn btn-ghost" onclick="closeModal('editLiabModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT CONTRIBUTION MODAL -->
+<div class="modal-overlay hidden" id="editContribModal">
+  <div class="modal" style="max-width:520px;width:100%">
+    <h2>Edit Contribution</h2>
+    <div class="form-grid" style="margin-top:14px">
+      <div class="form-group full"><label>Name *</label><input type="text" id="ecName" placeholder="e.g. SSS, PhilHealth" /></div>
+      <div class="form-group"><label>Type</label>
+        <select id="ecType"><option>SSS</option><option>PhilHealth</option><option>Pag-IBIG</option><option>MP2</option><option>Other</option></select></div>
+      <div class="form-group"><label>Amount (&#x20B1;) *</label><input type="number" id="ecAmount" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Due Date</label>
+        <select id="ecDueDay"><option value="">&#x2014; Select &#x2014;</option><option value="15">15th (Mid-month)</option><option value="0">End of Month</option></select></div>
+      <div class="form-group"><label>Payment Method</label>
+        <select id="ecPayment" onchange="onEditContribPaymentChange()"><option value="">&#x2014; Select &#x2014;</option><option>Cash</option><option>Credit Card</option><option>GCash</option><option>GrabPay</option><option>Bank Transfer</option><option>Other</option></select></div>
+      <div class="form-group" id="ecFromAccountWrap" style="display:none"><label id="ecFromAccountLabel" for="ecFromAccount">From Account</label><select id="ecFromAccount"><option value="">&#x2014; Select &#x2014;</option></select></div>
+      <div class="form-group full"><label>Notes</label><input type="text" id="ecNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-primary" onclick="saveEditContrib()">Save Changes</button>
+      <button class="btn btn-ghost" onclick="closeModal('editContribModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT CARD MODAL -->
+<div class="modal-overlay hidden" id="editCardModal">
+  <div class="modal" style="max-width:480px;width:100%">
+    <h2>Edit Credit Card</h2>
+    <div class="form-grid" style="margin-top:14px">
+      <div class="form-group full"><label>Card Name *</label><input type="text" id="ecName" placeholder="e.g. My JCB, Personal AMEX" /></div>
+      <div class="form-group"><label>Account / Group</label><input type="text" id="ecGroup" placeholder="e.g. BDO (to combine cards)" /></div>
+      <div class="form-group"><label>Credit Limit (&#x20B1;)</label><input type="number" id="ecLimit" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Current Balance / Debt (&#x20B1;)</label><input type="number" id="ecBalance" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Due Date</label>
+        <select id="ecDueDay"><option value="">&#x2014; Select &#x2014;</option><option value="15">15th (Mid-month)</option><option value="0">End of Month</option></select></div>
+      <div class="form-group full"><label>Notes</label><input type="text" id="ecNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-primary" onclick="saveEditCard()">Save Changes</button>
+      <button class="btn btn-ghost" onclick="closeModal('editCardModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- EDIT TRANSACTION MODAL -->
 <div class="modal-overlay hidden" id="editModal">
   <div class="modal" style="max-width:560px;width:100%">
@@ -335,7 +494,7 @@
         <select id="eCategory"><option value="">— Select —</option></select></div>
       <div class="form-group"><label for="ePayment">Payment Method</label>
         <select id="ePayment"><option value="">— Select —</option>
-          <option>Cash</option><option>BDO Credit Card</option><option>BDO Debit Card</option><option>AMEX Credit Card</option><option>GCash</option><option>Maya</option><option>Bank Transfer</option><option>Metrobank</option><option>BPI</option><option>UnionBank</option><option>RCBC</option><option>ShopeePay</option><option>Other</option>
+          <option>Cash</option><option>Credit Card</option><option>GCash</option><option>GrabPay</option><option>Bank Transfer</option><option>Other</option>
         </select></div>
       <div class="form-group full"><label for="eDesc">Description</label><input type="text" id="eDesc" placeholder="Optional note..." /></div>
       <div class="form-group full"><label for="eAmount">Amount (&#x20B1;) *</label><input type="number" id="eAmount" min="0" step="0.01" placeholder="0.00" /></div>
@@ -377,7 +536,8 @@
       <div class="form-group"><label>Due Date</label>
         <select id="ebDueDay"><option value="">&#x2014; Select &#x2014;</option><option value="15">15th (Mid-month)</option><option value="0">End of Month</option></select></div>
       <div class="form-group"><label>Payment Method</label>
-        <select id="ebPayment"><option value="">&#x2014; Select &#x2014;</option><option>Cash</option><option>BDO Online</option><option>AMEX Credit Card</option><option>GCash</option><option>Maya</option><option>Bank Transfer</option><option>Auto-debit</option><option>Other</option></select></div>
+        <select id="ebPayment" onchange="onEditBillPaymentChange()"><option value="">&#x2014; Select &#x2014;</option><option>Cash</option><option>Credit Card</option><option>GCash</option><option>GrabPay</option><option>Bank Transfer</option><option>Other</option></select></div>
+      <div class="form-group" id="ebFromAccountWrap" style="display:none"><label id="ebFromAccountLabel" for="ebFromAccount">From Account</label><select id="ebFromAccount"><option value="">&#x2014; Select &#x2014;</option></select></div>
       <div class="form-group full"><label>Notes</label><input type="text" id="ebNotes" placeholder="Optional" /></div>
     </div>
     <div class="form-actions" style="margin-top:16px">
