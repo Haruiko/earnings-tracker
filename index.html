@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Earnings Tracker</title>
+  <link rel="stylesheet" href="assets/css/app.css" />
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="logo">&#x1F4B0;</div>
+    <h1>Earnings <span>Tracker</span></h1>
+    <p>Sign in with your Google account to access your personal finance dashboard.</p>
+    <button class="btn-google" id="googleSignInBtn" onclick="signInWithGoogle()">
+      <svg width="20" height="20" viewBox="0 0 48 48">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+      </svg>
+      Sign in with Google
+    </button>
+    <p class="login-error" id="loginError"></p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appContent" class="hidden">
+
+<header>
+  <h1>Earnings <span>Tracker</span></h1>
+  <p>Personal finance dashboard</p>
+  <div class="user-bar hidden" id="userBar">
+    <div class="profile-dropdown-wrap" id="profileDropdownWrap">
+      <img class="user-avatar" id="userAvatar" src="" alt="" onclick="toggleProfileDropdown()" />
+      <span class="user-name" id="userName" onclick="toggleProfileDropdown()"></span>
+      <svg class="profile-caret" onclick="toggleProfileDropdown()" width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+      <div class="profile-dropdown hidden" id="profileDropdown">
+        <button onclick="goToAccounts()">&#x1F3E6; Accounts &amp; Wallets</button>
+        <button class="signout" onclick="handleSignOut()">&#x1F6AA; Sign Out</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- Summary Cards -->
+<div class="summary-wrap" id="summaryGrid">
+  <div class="summary-row" id="accountsRow"></div>
+  <div class="summary-row" id="cardsRow"></div>
+  <div class="summary-full">
+    <div class="card total-expense">
+      <div class="label">Total Expenses</div>
+      <div class="value" id="totalExpense">&#x20B1;0.00</div>
+      <div class="sublabel">All-time spending</div>
+    </div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs-wrap">
+  <div class="tab-dropdown-wrap">
+    <select class="tab-select" id="tabSelect" onchange="switchTabSelect(this)">
+      <option value="transactions">&#x1F4CB; Transactions</option>
+      <option value="accounts">&#x1F3E6; Accounts &amp; Wallets</option>
+      <option value="cards">&#x1F4B3; Credit Cards</option>
+      <option value="bills">&#x1F9FE; Monthly Bills</option>
+      <option value="contributions">&#x1F4CB; Gov Contributions</option>
+      <option value="goals">&#x1F3AF; Savings Goals</option>
+      <option value="incomes">&#x1F4BC; Income Sources</option>
+      <option value="health">&#x1F3E5; Health &amp; Insurance</option>
+      <option value="members">&#x1F465; Members</option>
+    </select>
+  </div>
+</div>
+
+<!-- TAB: TRANSACTIONS -->
+<div class="panel active" id="tab-transactions">
+  <div class="form-panel">
+    <h2>Add Transaction</h2>
+    <div class="form-grid">
+      <div class="form-group"><label for="fDate">Date *</label><input type="date" id="fDate" /></div>
+      <div class="form-group"><label for="fType">Transaction Type *</label>
+        <select id="fType" onchange="onTypeChange()"><option value="">&#x2014; Select &#x2014;</option><option>Income</option><option>Expense</option></select></div>
+      <div class="form-group"><label for="fCategory">Category *</label>
+        <select id="fCategory" onchange="onCategoryChange()"><option value="">&#x2014; Select Type First &#x2014;</option></select></div>
+      <div class="form-group" id="fPaymentWrap"><label for="fPayment">Payment Method</label>
+        <select id="fPayment" onchange="onPaymentMethodChange()"><option value="">&#x2014; Select &#x2014;</option>
+          <option>Cash</option><option>BDO Credit Card</option><option>BDO Debit Card</option><option>AMEX Credit Card</option><option>GCash</option><option>Maya</option><option>Bank Transfer</option><option>Metrobank</option><option>BPI</option><option>UnionBank</option><option>RCBC</option><option>ShopeePay</option><option>Other</option>
+        </select></div>
+      <div class="form-group" id="fPaidByWrap"><label for="fPaidBy">Paid by</label><select id="fPaidBy"><option value="">&#x2014; Select &#x2014;</option></select></div>
+      <div class="form-group" id="fFromAccountWrap" style="display:none"><label id="fFromAccountLabel" for="fFromAccount">From Account</label><select id="fFromAccount"><option value="">&#x2014; Select &#x2014;</option></select></div>
+      <div class="form-group full">
+        <label for="fDesc">Description <span style="color:var(--text-muted);font-weight:400;font-size:.72rem">(optional)</span></label>
+        <div class="desc-combo">
+          <input type="text" id="fDesc" placeholder="Type a note..." autocomplete="off" />
+          <div class="desc-saved-wrap">
+            <button type="button" class="icon-btn desc-saved-toggle" onclick="toggleDescPanel()" title="Saved descriptions">&#x1F4CB; Saved</button>
+            <div id="descSavedPanel" class="desc-saved-panel hidden">
+              <div id="descSavedList"></div>
+              <div class="desc-saved-empty" id="descSavedEmpty" style="display:none">No saved descriptions yet.</div>
+            </div>
+          </div>
+          <button type="button" class="icon-btn desc-save-btn" onclick="saveDesc()" title="Save description for reuse">＋</button>
+        </div>
+      </div>
+      <div class="form-group full"><label for="fAmount">Amount (&#x20B1;) *</label><input type="number" id="fAmount" min="0" step="0.01" placeholder="0.00" /></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="addTransaction()">+ Add Transaction</button>
+      <button class="btn btn-ghost" onclick="clearForm()">Clear</button>
+    </div>
+  </div>
+
+  <div class="filters">
+    <div class="form-group"><label>Account</label><select id="filterAccount" onchange="renderTable()"><option value="">All Accounts</option></select></div>
+    <div class="form-group"><label>Type</label><select id="filterType" onchange="renderTable()"><option value="">All Types</option><option>Income</option><option>Expense</option></select></div>
+    <div class="form-group"><label>Category</label><select id="filterCategory" onchange="renderTable()"><option value="">All Categories</option></select></div>
+    <div class="form-group"><label>From</label><input type="date" id="filterFrom" onchange="renderTable()" /></div>
+    <div class="form-group"><label>To</label><input type="date" id="filterTo" onchange="renderTable()" /></div>
+    <div class="form-group"><label>Search</label><input type="text" id="filterSearch" placeholder="Description, category..." oninput="renderTable()" /></div>
+    <button class="btn btn-ghost" onclick="clearFilters()">Reset</button>
+  </div>
+
+  <div class="section-panel">
+    <div class="section-header">
+      <h2>Transaction Ledger</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="exportCSV()">Export CSV</button>
+        <button class="btn btn-danger btn-sm" onclick="confirmClearAll()">Clear All</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Date</th><th>Type</th><th>Category</th><th>Payment</th><th>From Account</th><th>Paid by</th><th>Description</th><th>Amount</th><th>Balance</th><th>Actions</th></tr></thead>
+        <tbody id="txTableBody"></tbody>
+      </table>
+      <div id="emptyState" class="empty-state hidden">No transactions found. Add one above!</div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB: ACCOUNTS -->
+<div class="panel" id="tab-accounts">
+  <div class="form-panel">
+    <h2>Add Account / Wallet</h2>
+    <div class="form-grid">
+      <div class="form-group"><label>Account Name *</label><input type="text" id="aName" placeholder="e.g. BDO Savings, GCash" /></div>
+      <div class="form-group"><label>Account Type</label>
+        <select id="aType"><option>Bank Account</option><option>E-Wallet</option><option>Cash</option><option>Savings</option><option>Investment</option><option>Other</option></select></div>
+      <div class="form-group"><label>Current Balance (&#x20B1;) *</label><input type="number" id="aBalance" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Notes</label><input type="text" id="aNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="addAccount()">+ Add Account</button></div>
+  </div>
+  <div class="section-panel">
+    <div class="section-header">
+      <h2>All Accounts &amp; Wallets</h2>
+      <div style="font-size:.85rem;color:var(--text-muted)">Total: <strong id="accountsTotal" style="color:var(--cyan)">&#x20B1;0.00</strong></div>
+    </div>
+    <div class="section-body"><div class="accounts-grid" id="accountsGrid"><div class="empty-state">No accounts yet.</div></div></div>
+  </div>
+</div>
+
+<!-- TAB: CREDIT CARDS -->
+<div class="panel" id="tab-cards">
+  <div class="form-panel">
+    <h2>Add Credit Card</h2>
+    <div class="form-grid">
+      <div class="form-group"><label>Card Name *</label><input type="text" id="ccName" placeholder="e.g. Aira JCB, Denmark AMEX" /></div>
+      <div class="form-group"><label>Account / Group</label><input type="text" id="ccGroup" placeholder="e.g. BDO (to combine cards)" /></div>
+      <div class="form-group"><label>Credit Limit (&#x20B1;)</label><input type="number" id="ccLimit" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Current Balance / Debt (&#x20B1;) *</label><input type="number" id="ccBalance" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Due Date</label>
+        <select id="ccDueDay"><option value="">&#x2014; Select &#x2014;</option><option value="15">15th (Mid-month)</option><option value="0">End of Month</option></select></div>
+      <div class="form-group"><label>Notes</label><input type="text" id="ccNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="addCard()">+ Add Card</button></div>
+  </div>
+  <div class="section-panel">
+    <div class="section-header">
+      <h2>Credit Cards</h2>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button id="combineCardsBtn" class="btn btn-ghost btn-sm" onclick="toggleCombineCards()">Combine</button>
+        <div style="font-size:.85rem;color:var(--text-muted)">Total Debt: <strong id="cardsTotal" style="color:var(--orange)">&#x20B1;0.00</strong></div>
+      </div>
+    </div>
+    <div class="section-body"><div class="accounts-grid" id="cardsGrid"><div class="empty-state">No credit cards yet.</div></div></div>
+  </div>
+</div>
+
+<!-- TAB: BILLS -->
+<div class="panel" id="tab-bills">
+  <div class="form-panel">
+    <h2>Add Monthly Bill / Recurring Expense</h2>
+    <div class="form-grid">
+      <div class="form-group"><label>Bill Name *</label><input type="text" id="bName" placeholder="e.g. BATELEC, Converge" /></div>
+      <div class="form-group"><label>Category</label>
+        <select id="bCategory"><option>Utilities</option><option>Internet</option><option>Water</option><option>Rent</option><option>Loan / Installment</option><option>Subscription</option><option>Other</option></select></div>
+      <div class="form-group"><label>Amount (&#x20B1;) *</label><input type="number" id="bAmount" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Due Date</label>
+        <select id="bDueDay"><option value="">&#x2014; Select &#x2014;</option><option value="15">15th (Mid-month)</option><option value="0">End of Month</option></select></div>
+      <div class="form-group"><label>Payment Method</label>
+        <select id="bPayment"><option value="">&#x2014; Select &#x2014;</option><option>Cash</option><option>BDO Online</option><option>AMEX Credit Card</option><option>GCash</option><option>Maya</option><option>Bank Transfer</option><option>Auto-debit</option><option>Other</option></select></div>
+      <div class="form-group"><label>Notes</label><input type="text" id="bNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="addBill()">+ Add Bill</button></div>
+  </div>
+  <div class="section-panel">
+    <div class="section-header">
+      <h2>Monthly Bills</h2>
+      <div style="font-size:.85rem;color:var(--text-muted)">Monthly Total: <strong id="billsTotal" style="color:var(--orange)">&#x20B1;0.00</strong></div>
+    </div>
+    <div class="section-body"><div class="bills-grid" id="billsGrid"><div class="empty-state">No bills yet.</div></div></div>
+  </div>
+</div>
+
+<!-- TAB: CONTRIBUTIONS -->
+<div class="panel" id="tab-contributions">
+  <div class="form-panel">
+    <h2>Add Government Contribution</h2>
+    <div class="form-grid">
+      <div class="form-group"><label>Name *</label><input type="text" id="cName" placeholder="e.g. SSS Aira, PhilHealth Denmark" /></div>
+      <div class="form-group"><label>Type</label>
+        <select id="cType"><option>SSS</option><option>PhilHealth</option><option>Pag-IBIG</option><option>MP2</option><option>Other</option></select></div>
+      <div class="form-group"><label>Amount (&#x20B1;) *</label><input type="number" id="cAmount" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Due Date</label>
+        <select id="cDueDay"><option value="">&#x2014; Select &#x2014;</option><option value="15">15th (Mid-month)</option><option value="0">End of Month</option></select></div>
+      <div class="form-group"><label>Last Paid Date</label><input type="date" id="cLastPaid" /></div>
+      <div class="form-group"><label>Notes</label><input type="text" id="cNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="addContribution()">+ Add Contribution</button></div>
+  </div>
+  <div class="section-panel">
+    <div class="section-header">
+      <h2>Government Contributions</h2>
+      <div style="font-size:.85rem;color:var(--text-muted)">Monthly Total: <strong id="contribTotal" style="color:var(--purple)">&#x20B1;0.00</strong></div>
+    </div>
+    <div class="section-body"><div class="contrib-grid" id="contribGrid"><div class="empty-state">No contributions yet.</div></div></div>
+  </div>
+</div>
+
+<!-- TAB: GOALS -->
+<div class="panel" id="tab-goals">
+  <div class="form-panel">
+    <h2>Add Savings Goal</h2>
+    <div class="form-grid">
+      <div class="form-group"><label>Goal Name *</label><input type="text" id="gName" placeholder="e.g. Land for parents" /></div>
+      <div class="form-group"><label>Target Amount (&#x20B1;) *</label><input type="number" id="gTarget" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Amount Already Saved (&#x20B1;)</label><input type="number" id="gSaved" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Monthly Contribution (&#x20B1;)</label><input type="number" id="gMonthly" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group full"><label>Notes</label><input type="text" id="gNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="addGoal()">+ Add Goal</button></div>
+  </div>
+  <div class="section-panel">
+    <div class="section-header"><h2>Savings Goals</h2></div>
+    <div class="section-body"><div class="goals-grid" id="goalsGrid"><div class="empty-state">No goals yet.</div></div></div>
+  </div>
+</div>
+
+<!-- TAB: INCOME SOURCES -->
+<div class="panel" id="tab-incomes">
+  <div class="form-panel">
+    <h2>Add Income Source</h2>
+    <div class="form-grid">
+      <div class="form-group"><label>Source Name *</label><input type="text" id="iName" placeholder="e.g. Denmark Work Pay" /></div>
+      <div class="form-group"><label>Platform / Employer</label><input type="text" id="iPlatform" placeholder="e.g. Upwork, HM" /></div>
+      <div class="form-group"><label>Monthly Amount (&#x20B1;) *</label><input type="number" id="iAmount" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Type</label>
+        <select id="iType"><option>Full-time</option><option>Part-time</option><option>Freelance</option><option>Business</option><option>Passive</option><option>Other</option></select></div>
+      <div class="form-group full"><label>Notes</label><input type="text" id="iNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="addIncomeSource()">+ Add Source</button></div>
+  </div>
+  <div class="section-panel">
+    <div class="section-header">
+      <h2>Income Sources</h2>
+      <div style="font-size:.85rem;color:var(--text-muted)">Monthly Total: <strong id="incomesTotal" style="color:var(--green)">&#x20B1;0.00</strong></div>
+    </div>
+    <div class="section-body"><div class="income-list" id="incomesList"><div class="empty-state">No income sources yet.</div></div></div>
+  </div>
+</div>
+
+<!-- TAB: HEALTH & INSURANCE -->
+<div class="panel" id="tab-health">
+  <div class="form-panel">
+    <h2>Add Health / Insurance Entry</h2>
+    <div class="form-grid">
+      <div class="form-group"><label>Name *</label><input type="text" id="hName" placeholder="e.g. Mama Medicaid, Aira Sunlife" /></div>
+      <div class="form-group"><label>Type</label>
+        <select id="hType"><option>Medicaid</option><option>HMO</option><option>Life Insurance</option><option>Health Insurance</option><option>Dental</option><option>Other</option></select></div>
+      <div class="form-group"><label>Annual Premium (&#x20B1;)</label><input type="number" id="hPremium" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group"><label>Last Payment Date</label><input type="date" id="hLastPaid" /></div>
+      <div class="form-group"><label>Renewal / Due Date</label><input type="date" id="hRenewal" /></div>
+      <div class="form-group"><label>Payment Method</label>
+        <select id="hPayment"><option value="">&#x2014; Select &#x2014;</option><option>Cash</option><option>GCash</option><option>BDO Credit Card</option><option>AMEX Credit Card</option><option>RCBC Credit Card</option><option>Bank Transfer</option><option>Auto-debit</option><option>Other</option></select></div>
+      <div class="form-group full"><label>Notes</label><input type="text" id="hNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" onclick="addHealth()">+ Add Entry</button></div>
+  </div>
+  <div class="section-panel">
+    <div class="section-header"><h2>Health &amp; Insurance</h2></div>
+    <div class="section-body"><div class="health-grid" id="healthGrid"><div class="empty-state">No entries yet.</div></div></div>
+  </div>
+</div>
+
+<!-- TAB: MEMBERS -->
+<div class="panel" id="tab-members">
+  <div class="section-panel">
+    <div class="section-header">
+      <h2>Shared Account Members</h2>
+      <div style="font-size:.85rem;color:var(--text-muted)">People who share accounts with you</div>
+    </div>
+    <div class="section-body" id="membersPanel">
+      <div class="empty-state">No shared accounts yet.</div>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT TRANSACTION MODAL -->
+<div class="modal-overlay hidden" id="editModal">
+  <div class="modal" style="max-width:560px;width:100%">
+    <h2>Edit Transaction</h2>
+    <div class="form-grid" style="margin-top:14px">
+      <div class="form-group"><label for="eDate">Date *</label><input type="date" id="eDate" /></div>
+      <div class="form-group"><label for="eType">Type *</label>
+        <select id="eType" onchange="onEditTypeChange()"><option value="">— Select —</option><option>Income</option><option>Expense</option></select></div>
+      <div class="form-group"><label for="eCategory">Category *</label>
+        <select id="eCategory"><option value="">— Select —</option></select></div>
+      <div class="form-group"><label for="ePayment">Payment Method</label>
+        <select id="ePayment"><option value="">— Select —</option>
+          <option>Cash</option><option>BDO Credit Card</option><option>BDO Debit Card</option><option>AMEX Credit Card</option><option>GCash</option><option>Maya</option><option>Bank Transfer</option><option>Metrobank</option><option>BPI</option><option>UnionBank</option><option>RCBC</option><option>ShopeePay</option><option>Other</option>
+        </select></div>
+      <div class="form-group full"><label for="eDesc">Description</label><input type="text" id="eDesc" placeholder="Optional note..." /></div>
+      <div class="form-group full"><label for="eAmount">Amount (&#x20B1;) *</label><input type="number" id="eAmount" min="0" step="0.01" placeholder="0.00" /></div>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+      <button class="btn btn-ghost" onclick="closeModal('editModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT ACCOUNT MODAL -->
+<div class="modal-overlay hidden" id="editAccountModal">
+  <div class="modal" style="max-width:480px;width:100%">
+    <h2>Edit Account</h2>
+    <div class="form-grid" style="margin-top:14px">
+      <div class="form-group full"><label>Account Name *</label><input type="text" id="eaName" placeholder="e.g. BDO Savings" /></div>
+      <div class="form-group"><label>Type</label>
+        <select id="eaType"><option>Bank Account</option><option>E-Wallet</option><option>Cash</option><option>Savings</option><option>Investment</option><option>Other</option></select></div>
+      <div class="form-group"><label>Current Balance (&#x20B1;)</label><input type="number" id="eaBalance" min="0" step="0.01" placeholder="0.00" /></div>
+      <div class="form-group full"><label>Notes</label><input type="text" id="eaNotes" placeholder="Optional" /></div>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn btn-primary" onclick="saveEditAccount()">Save Changes</button>
+      <button class="btn btn-ghost" onclick="closeModal('editAccountModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- INVITE MEMBER MODAL -->
+<div class="modal-overlay hidden" id="inviteMemberModal">
+  <div class="modal">
+    <h2>Share Tracker</h2>
+    <p>Enter the email address of the person you want to share with. They will see all your accounts and transactions, and you will see theirs.</p>
+    <div class="form-group">
+      <label for="inviteEmail">User Email</label>
+      <input type="email" id="inviteEmail" placeholder="user@email.com" />
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="inviteMemberSubmit()">Share</button>
+      <button class="btn btn-ghost" onclick="closeModal('inviteMemberModal')">Cancel</button>
+    </div>
+    <div class="invite-error" id="inviteError" style="color:#ef4444;margin-top:8px"></div>
+  </div>
+</div>
+
+<script>
+// Open invite modal for a specific account
+let inviteAccountId = null;
+function openInviteModal(accountId) {
+  inviteAccountId = accountId;
+  document.getElementById('inviteEmail').value = '';
+  document.getElementById('inviteError').textContent = '';
+  document.getElementById('inviteMemberModal').classList.remove('hidden');
+}
+</script>
+
+<div class="loading-overlay hidden" id="loadingOverlay"><div class="spinner"></div></div>
+<div class="toast" id="toast"></div>
+
+<!-- Firebase config is loaded from a separate file (excluded from git). -->
+<!-- See firebase-config.js � do NOT put API keys directly in this file. -->
+<script src="firebase-config.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
