@@ -87,6 +87,25 @@ async function fbGetByUid(path, uid) {
   const data = await res.json();
   return data ? Object.entries(data).map(([id, v]) => Object.assign({}, v, { id })) : [];
 }
+// Fetch transactions for a single account via orderBy=accountId query.
+// Falls back to full fetch + client filter if the index isn't active yet (HTTP 400)
+// OR if the userAccountIndex entry is missing (HTTP 403) during first-login migration.
+async function fbGetByAccountId(accountId) {
+  const token = await getToken();
+  const res = await fetch(BASE + '/transactions.json?auth=' + token + '&orderBy=%22accountId%22&equalTo=%22' + encodeURIComponent(accountId) + '%22');
+  if (res.status === 400 || res.status === 403) {
+    // 400 = index not defined yet; 403 = userAccountIndex entry missing (migration in progress)
+    // Fall back to individual-account transaction path if available, else full collection
+    const fallback = await fetch(BASE + '/transactions.json?auth=' + token);
+    if (!fallback.ok) return []; // transactions collection also locked — return empty gracefully
+    const raw = await fallback.json();
+    const all = raw ? Object.entries(raw).map(([id, v]) => Object.assign({}, v, { id })) : [];
+    return all.filter(function(x) { return x.accountId === accountId; });
+  }
+  if (!res.ok) throw new Error('GET transactions (accountId=' + accountId + ') failed: ' + res.status);
+  const data = await res.json();
+  return data ? Object.entries(data).map(([id, v]) => Object.assign({}, v, { id })) : [];
+}
 
 // Auth
 const G_SVG = '<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
@@ -806,6 +825,15 @@ async function addAccount() {
       if (linked) Object.keys(linked).forEach(function(uid) { members[uid] = true; });
     } catch(e) { /* ignore */ }
     var id = await fbPost('accounts', { name:name, type:type, balance:balance, notes:notes, members: members });
+    // Write userAccountIndex entry for every initial member
+    try {
+      var idxToken = await getToken();
+      await Promise.all(Object.keys(members).map(function(mUid) {
+        return fetch(BASE + '/userAccountIndex/' + mUid + '/' + id + '.json?auth=' + idxToken, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: 'true'
+        });
+      }));
+    } catch(e) { console.warn('Failed to write account index:', e); }
     accounts.push({ id:id, name:name, type:type, balance:balance, notes:notes, members: members });
     activeAccountId = id;
     renderAccounts(); renderSummary();
@@ -846,8 +874,18 @@ async function saveEditAccount() {
 }
 async function deleteAccount(id) {
   if (!confirm('Delete this account?')) return;
+  var acct = accounts.find(function(a) { return a.id === id; });
   setLoading(true);
   try {
+    // Clean userAccountIndex for all members BEFORE deleting (rules check membership)
+    if (acct && acct.members) {
+      try {
+        var idxToken = await getToken();
+        await Promise.all(Object.keys(acct.members).map(function(mUid) {
+          return fetch(BASE + '/userAccountIndex/' + mUid + '/' + id + '.json?auth=' + idxToken, { method: 'DELETE' });
+        }));
+      } catch(e) { console.warn('Failed to clean account index:', e); }
+    }
     await fbDelete('accounts', id);
     accounts = accounts.filter(function(a) { return a.id!==id; });
     renderAccounts(); renderSummary(); toast('Deleted.','error');
@@ -964,6 +1002,12 @@ async function removeLinkedMember(uid) {
       await fetch(BASE + '/accounts/' + myAccounts[i].id + '/members/' + uid + '.json?auth=' + token, { method: 'DELETE' });
       if (myAccounts[i].members) delete myAccounts[i].members[uid];
     }
+    // Clean userAccountIndex for the removed member
+    try {
+      for (var ci = 0; ci < myAccounts.length; ci++) {
+        await fetch(BASE + '/userAccountIndex/' + uid + '/' + myAccounts[ci].id + '.json?auth=' + token, { method: 'DELETE' });
+      }
+    } catch(e) { console.warn('Failed to clean account index:', e); }
     renderMembers();
     renderAccounts();
     renderAccountSelect();
@@ -1896,15 +1940,62 @@ auth.onAuthStateChanged(async function(user) {
       } catch(e) { console.warn('Could not load linked UIDs:', e); }
       async function safeFbGet(path) { try { return await fbGet(path); } catch(e) { console.warn('Could not load ' + path + ':', e); return []; } }
       async function safeFbGetByUid(path, uid) { try { return await fbGetByUid(path, uid); } catch(e) { console.warn('Could not load ' + path + ' for uid ' + uid + ':', e); return []; } }
-      // Fetch accounts and transactions (shared entities — filtered client-side by membership)
-      var [txData, accData] = await Promise.all([safeFbGet('transactions'), safeFbGet('accounts')]);
-      transactions = txData;
-      accounts = accData;
-      // Fetch uid-scoped personal data with server-side uid filter for each linked user.
-      // The rules enforce orderBy=uid queries, so only authorised data is returned.
+      // ── Load accounts via per-user account index (private, server-enforced) ──
+      var allLinkedUids = [uid].concat(linkedUids.filter(function(x) { return x !== uid; }));
+      var myAccountIdMap = {};
+      await Promise.all(allLinkedUids.map(async function(luid) {
+        try {
+          var r = await fetch(BASE + '/userAccountIndex/' + luid + '.json?auth=' + token);
+          if (r.ok) { var d = await r.json(); if (d && typeof d === 'object') Object.keys(d).forEach(function(k) { if (d[k]) myAccountIdMap[k] = true; }); }
+        } catch(e) {}
+      }));
+      var accountIdList = Object.keys(myAccountIdMap);
+      // Fetch each account record individually (rules enforce per-record index check)
+      var accResults = await Promise.all(accountIdList.map(async function(accId) {
+        try {
+          var r = await fetch(BASE + '/accounts/' + accId + '.json?auth=' + token);
+          if (!r.ok) return null;
+          var d = await r.json();
+          return d ? Object.assign({}, d, { id: accId }) : null;
+        } catch(e) { return null; }
+      }));
+      accounts = accResults.filter(Boolean);
+      // Migration: if index was empty (first login / pre-index data), fall back to
+      // full list read (works with old broad rules) and rebuild the index.
+      if (!accountIdList.length) {
+        try {
+          var fallbackAccs = await safeFbGet('accounts');
+          if (fallbackAccs.length) {
+            accounts = fallbackAccs;
+            var rebuildObj = {};
+            accounts.forEach(function(a) { if (a.members && a.members[uid]) rebuildObj[a.id] = true; });
+            if (Object.keys(rebuildObj).length) {
+              await fetch(BASE + '/userAccountIndex/' + uid + '.json?auth=' + token, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rebuildObj)
+              });
+            }
+          }
+        } catch(e) { console.warn('Account index migration failed:', e); }
+      }
+      // ── Load transactions scoped per account ──
+      var memberAccountIds = [];
+      allLinkedUids.forEach(function(luid) {
+        accounts.forEach(function(a) {
+          if (a.members && a.members[luid] && memberAccountIds.indexOf(a.id) === -1) memberAccountIds.push(a.id);
+        });
+      });
+      var txBatches = await Promise.all(memberAccountIds.map(async function(accId) {
+        try { return await fbGetByAccountId(accId); } catch(e) { return []; }
+      }));
+      var txSeen = {};
+      transactions = [];
+      txBatches.forEach(function(batch) {
+        batch.forEach(function(tx) { if (!txSeen[tx.id]) { txSeen[tx.id] = true; transactions.push(tx); } });
+      });
+      // ── Fetch uid-scoped personal data ──
       var uidPaths = ['cards','bills','contributions','goals','incomeSources','healthItems','assets','liabilities'];
       var perUidResults = await Promise.all(
-        linkedUids.map(function(linkedUid) {
+        allLinkedUids.map(function(linkedUid) {
           return Promise.all(uidPaths.map(function(p) { return safeFbGetByUid(p, linkedUid); }));
         })
       );
@@ -2044,6 +2135,19 @@ async function inviteMemberSubmit() {
         if (!otherAccounts[k].members) otherAccounts[k].members = {};
         otherAccounts[k].members[currentUser.uid] = true;
       }
+      // Update userAccountIndex for both users
+      try {
+        for (var ii = 0; ii < myAccounts.length; ii++) {
+          await fetch(BASE + '/userAccountIndex/' + matchedUid + '/' + myAccounts[ii].id + '.json?auth=' + token, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: 'true'
+          });
+        }
+        for (var kk = 0; kk < otherAccounts.length; kk++) {
+          await fetch(BASE + '/userAccountIndex/' + currentUser.uid + '/' + otherAccounts[kk].id + '.json?auth=' + token, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: 'true'
+          });
+        }
+      } catch(e) { console.warn('Failed to update account index:', e); }
       closeModal('inviteMemberModal');
       toast('Tracker shared! You can now both see all accounts and transactions.');
       refreshAll();
@@ -2080,20 +2184,26 @@ async function processPendingInvites(user, token) {
       await fetch(BASE + '/userLinks/' + inviterUid + '/linkedWith/' + user.uid + '.json?auth=' + token, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: 'true'
       });
-      // Add new user to all of inviter's accounts
-      var allAccRes = await fetch(BASE + '/accounts.json?auth=' + token);
-      var allAccData = allAccRes.ok ? await allAccRes.json() : null;
-      if (allAccData) {
-        var accEntries = Object.entries(allAccData);
-        for (var j = 0; j < accEntries.length; j++) {
-          var aId = accEntries[j][0], aData = accEntries[j][1];
-          if (aData.members && aData.members[inviterUid]) {
-            await fetch(BASE + '/accounts/' + aId + '/members/' + user.uid + '.json?auth=' + token, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: 'true'
-            });
+      // Add new user to all of inviter's accounts via the inviter's account index
+      // (bidirectional link was just created above, so invitee can now read inviter's index)
+      try {
+        var inviterIdxRes = await fetch(BASE + '/userAccountIndex/' + inviterUid + '.json?auth=' + token);
+        if (inviterIdxRes.ok) {
+          var inviterIdx = await inviterIdxRes.json();
+          if (inviterIdx && typeof inviterIdx === 'object') {
+            var inviterAccIds = Object.keys(inviterIdx).filter(function(k) { return inviterIdx[k]; });
+            for (var j = 0; j < inviterAccIds.length; j++) {
+              var aId = inviterAccIds[j];
+              await fetch(BASE + '/accounts/' + aId + '/members/' + user.uid + '.json?auth=' + token, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: 'true'
+              });
+              await fetch(BASE + '/userAccountIndex/' + user.uid + '/' + aId + '.json?auth=' + token, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: 'true'
+              });
+            }
           }
         }
-      }
+      } catch(e) { console.warn('Could not process inviter accounts:', e); }
     }
     // Clear processed invites
     await fetch(BASE + '/pendingInvites/' + emailKey + '.json?auth=' + token, { method: 'DELETE' });

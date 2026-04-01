@@ -23,12 +23,24 @@
       }
     },
 
+    // ── USER ACCOUNT INDEX ──
+    // Per-user private list of account IDs: /userAccountIndex/{uid}/{accountId}: true
+    // Maintained by app.js on account create/delete/invite/remove.
+    // Read: own index, or a linked member's index.
+    // Write: own index, OR any account member can write an index entry for that account.
+    "userAccountIndex": {
+      "$uid": {
+        ".read":  "auth != null && (auth.uid === $uid || root.child('userLinks').child(auth.uid).child('linkedWith').child($uid).val() === true)",
+        "$accountId": {
+          ".write": "auth != null && (auth.uid === $uid || root.child('accounts').child($accountId).child('members').child(auth.uid).exists())"
+        }
+      }
+    },
+
     // ── ACCOUNTS ──
-    // Accounts are shared resources (members map). Any signed-in user can list
-    // them but only account members can write. Client-side filtering by membership
-    // ensures users only see their own accounts in the UI.
-    // NOTE: Full server-side read restriction here requires restructuring the
-    // data model (e.g. a per-user account index). Planned future improvement.
+    // Collection-level read is kept open (auth != null) so the first-login migration
+    // can enumerate accounts and build the userAccountIndex.
+    // Individual writes are restricted to account members only.
     "accounts": {
       ".read": "auth != null",
       "$accountId": {
@@ -37,15 +49,17 @@
     },
 
     // ── TRANSACTIONS ──
-    // Same note as accounts — tied to shared account membership.
+    // Collection queries require orderBy=accountId. Access granted when:
+    //   a) The account is in the user's userAccountIndex (normal, post-migration path), OR
+    //   b) The user is directly in the account's members map (migration fallback, first login).
+    // Individual record reads follow the same dual-check.
     "transactions": {
-      ".read": "auth != null",
+      ".read": "auth != null && query.orderByChild === 'accountId' && (root.child('userAccountIndex').child(auth.uid).child(query.equalTo).exists() || root.child('accounts').child(query.equalTo).child('members').child(auth.uid).exists())",
       "$txId": {
-        ".write": "auth != null && (
-          (newData.exists() && root.child('accounts').child(newData.child('accountId').val()).child('members').child(auth.uid).exists()) ||
-          (!newData.exists() && root.child('accounts').child(data.child('accountId').val()).child('members').child(auth.uid).exists())
-        )"
-      }
+        ".read":  "auth != null && (root.child('userAccountIndex').child(auth.uid).child(data.child('accountId').val()).exists() || root.child('accounts').child(data.child('accountId').val()).child('members').child(auth.uid).exists())",
+        ".write": "auth != null && ((newData.exists() && root.child('accounts').child(newData.child('accountId').val()).child('members').child(auth.uid).exists()) || (!newData.exists() && root.child('accounts').child(data.child('accountId').val()).child('members').child(auth.uid).exists()))"
+      },
+      ".indexOn": ["accountId"]
     },
 
     // ── USER LINKS ──
