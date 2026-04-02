@@ -347,6 +347,9 @@ function saveDesc() {
   if (descs.length > 50) descs = descs.slice(0, 50);
   setSavedDescs(descs);
   populateDescDropdown();
+  if (typeof applyDynamicValidation === 'function' && sheetSyncEnabled && spreadsheetId) {
+    applyDynamicValidation(spreadsheetId).catch(function(){});
+  }
   toast('Description saved!');
 }
 function pickSavedDesc() {
@@ -619,6 +622,7 @@ async function addTransaction() {
         } catch(balErr) { console.error('Balance update failed:', balErr); toast('Transaction saved but balance update failed — check Firebase rules.', 'error'); }
       }
     }
+    syncItemToSheet('transactions', Object.assign({}, tx, {id:id})).catch(function(){});
     refreshAll(); clearForm(); toast('Transaction added!');
   } catch(e) { console.error(e); toast('Failed to save.','error'); }
   finally { setLoading(false); }
@@ -666,6 +670,7 @@ async function saveEdit() {
     await fbPut('transactions', editingId, updated);
     var idx = transactions.findIndex(function(t) { return t.id === editingId; });
     if (idx !== -1) transactions[idx] = updated;
+    syncItemToSheet('transactions', updated).catch(function(){});
     refreshAll(); closeModal('editModal'); toast('Updated!');
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
@@ -676,6 +681,7 @@ async function deleteTransaction(id) {
   try {
     await fbDelete('transactions', id);
     transactions = transactions.filter(function(t) { return t.id !== id; });
+    syncItemToSheet('transactions', {id:id}, true).catch(function(){});
     refreshAll(); toast('Deleted.','error');
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
@@ -836,6 +842,10 @@ async function addAccount() {
     } catch(e) { console.warn('Failed to write account index:', e); }
     accounts.push({ id:id, name:name, type:type, balance:balance, notes:notes, members: members });
     activeAccountId = id;
+    syncItemToSheet('accounts', {id:id, name:name, type:type, balance:balance, notes:notes}).catch(function(){});
+    if (typeof applyDynamicValidation === 'function' && sheetSyncEnabled && spreadsheetId) {
+      applyDynamicValidation(spreadsheetId).catch(function(){});
+    }
     renderAccounts(); renderSummary();
     sv('aName',''); sv('aBalance',''); sv('aNotes','');
     toast('Account added!');
@@ -867,6 +877,7 @@ async function saveEditAccount() {
   try {
     await fbPut('accounts', editingAccountId, updated);
     Object.assign(acct, updated);
+    syncItemToSheet('accounts', Object.assign({id:editingAccountId}, updated)).catch(function(){});
     closeModal('editAccountModal');
     renderAccounts(); renderSummary(); populateAccountFilter(); toast('Account updated!');
   } catch(e) { console.error(e); toast('Failed.', 'error'); }
@@ -888,6 +899,7 @@ async function deleteAccount(id) {
     }
     await fbDelete('accounts', id);
     accounts = accounts.filter(function(a) { return a.id!==id; });
+    syncItemToSheet('accounts', {id:id}, true).catch(function(){});
     renderAccounts(); renderSummary(); toast('Deleted.','error');
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
@@ -1025,6 +1037,10 @@ async function addCard() {
   try {
     var id = await fbPost('cards', { name:name, group:group, limit:limit, balance:balance, dueDay:dueDay, notes:notes, uid:currentUser.uid });
     cards.push({ id:id, name:name, group:group, limit:limit, balance:balance, dueDay:dueDay, notes:notes, uid:currentUser.uid });
+    syncItemToSheet('cards', {id:id, name:name, group:group, limit:limit, balance:balance, dueDay:dueDay, notes:notes}).catch(function(){});
+    if (typeof applyDynamicValidation === 'function' && sheetSyncEnabled && spreadsheetId) {
+      applyDynamicValidation(spreadsheetId).catch(function(){});
+    }
     renderCards(); renderSummary();
     ['ccName','ccGroup','ccLimit','ccBalance','ccDueDay','ccNotes'].forEach(function(i) { sv(i,''); });
     toast('Card added!');
@@ -1058,6 +1074,7 @@ async function saveEditCard() {
     var card = cards.find(function(c) { return c.id === editCardId; });
     await fbPut('cards', editCardId, { name:name, group:group, limit:limit, balance:balance, dueDay:dueDay, notes:notes, uid:card.uid });
     card.name = name; card.group = group; card.limit = limit; card.balance = balance; card.dueDay = dueDay; card.notes = notes;
+    syncItemToSheet('cards', {id:editCardId, name:name, group:group, limit:limit, balance:balance, dueDay:dueDay, notes:notes}).catch(function(){});
     closeModal('editCardModal');
     renderCards(); renderSummary();
     toast('Card updated!');
@@ -1070,6 +1087,7 @@ async function deleteCard(id) {
   try {
     await fbDelete('cards', id);
     cards = cards.filter(function(c) { return c.id!==id; });
+    syncItemToSheet('cards', {id:id}, true).catch(function(){});
     renderCards(); renderSummary(); toast('Deleted.','error');
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
@@ -1092,6 +1110,8 @@ async function payCard(id) {
     var tx = { date:todayStr(), type:'Expense', category:'Debt Payment', payment:'Bank Transfer', paidBy:(currentUser.displayName||currentUser.email||''), fromAccount:'', desc:'Payment — '+card.name, amountIn:0, amountOut:amount, accountId:activeAccountId };
     var txId = await fbPost('transactions', tx);
     transactions.push(Object.assign({}, tx, { id:txId }));
+    syncItemToSheet('transactions', Object.assign({}, tx, {id:txId})).catch(function(){});
+    syncItemToSheet('cards', {id:id, name:card.name, group:card.group||'', limit:card.limit||0, balance:newBal, dueDay:card.dueDay||0, notes:card.notes||''}).catch(function(){});
     renderCards(); renderSummary(); renderTable();
     toast('Payment of ' + fmt(amount) + ' recorded for ' + card.name + '!');
   } catch(e) { console.error(e); toast('Failed to record payment.', 'error'); }
@@ -1176,6 +1196,7 @@ async function addBill() {
   try {
     var id = await fbPost('bills', { name:name, category:category, amount:amount, dueDay:dueDay, payment:payment, fromAccount:fromAccount, notes:notes, uid:currentUser.uid });
     bills.push({ id:id, name:name, category:category, amount:amount, dueDay:dueDay, payment:payment, fromAccount:fromAccount, notes:notes, uid:currentUser.uid });
+    syncItemToSheet('bills', {id:id, name:name, category:category, amount:amount, dueDay:dueDay, payment:payment, fromAccount:fromAccount, notes:notes}).catch(function(){});
     renderBills();
     ['bName','bAmount','bDueDay','bNotes','bFromAccount'].forEach(function(i) { sv(i,''); });
     var bWrap = document.getElementById('bFromAccountWrap');
@@ -1197,6 +1218,7 @@ async function payBill(id) {
     var tx = { date:todayStr(), type:'Expense', category:bill.category||'Bills & Utilities', payment:bill.payment||'', paidBy:(currentUser.displayName||currentUser.email||''), fromAccount:'', desc:'Bill Payment \u2014 '+bill.name, amountIn:0, amountOut:amount, accountId:activeAccountId };
     var txId = await fbPost('transactions', tx);
     transactions.push(Object.assign({}, tx, { id:txId }));
+    syncItemToSheet('transactions', Object.assign({}, tx, {id:txId})).catch(function(){});
     renderSummary(); renderTable();
     toast('Payment of ' + fmt(amount) + ' recorded for ' + bill.name + '!');
   } catch(e) { console.error(e); toast('Failed to record payment.', 'error'); }
@@ -1235,6 +1257,7 @@ async function saveEditBill() {
     var updated = { name:name, category:category, amount:amount, dueDay:dueDay, payment:payment, fromAccount:fromAccount, notes:notes, uid:bill.uid };
     await fbPut('bills', editingBillId, updated);
     Object.assign(bill, updated);
+    syncItemToSheet('bills', Object.assign({id:editingBillId}, updated)).catch(function(){});
     closeModal('editBillModal');
     renderBills();
     toast('Bill updated!');
@@ -1247,6 +1270,7 @@ async function deleteBill(id) {
   try {
     await fbDelete('bills', id);
     bills = bills.filter(function(b) { return b.id!==id; });
+    syncItemToSheet('bills', {id:id}, true).catch(function(){});
     renderBills(); toast('Deleted.','error');
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
@@ -1287,6 +1311,7 @@ async function addAsset() {
   try {
     var id = await fbPost('assets', { name:name, type:type, value:value, notes:notes, uid:currentUser.uid });
     assets.push({ id:id, name:name, type:type, value:value, notes:notes, uid:currentUser.uid });
+    syncItemToSheet('assets', {id:id, name:name, type:type, value:value, notes:notes}).catch(function(){});
     renderNetWorth();
     ['assetName','assetValue','assetNotes'].forEach(function(i) { document.getElementById(i).value = ''; });
     toast('Asset added!');
@@ -1318,6 +1343,7 @@ async function saveEditAsset() {
     var updated = { name:name, type:type, value:value, notes:notes, uid:a.uid };
     await fbPut('assets', editingAssetId, updated);
     Object.assign(a, updated);
+    syncItemToSheet('assets', Object.assign({id:editingAssetId}, updated)).catch(function(){});
     closeModal('editAssetModal');
     renderNetWorth();
     toast('Asset updated!');
@@ -1330,6 +1356,7 @@ async function deleteAsset(id) {
   try {
     await fbDelete('assets', id);
     assets = assets.filter(function(x) { return x.id !== id; });
+    syncItemToSheet('assets', {id:id}, true).catch(function(){});
     renderNetWorth(); toast('Deleted.', 'error');
   } catch(e) { console.error(e); toast('Failed.', 'error'); }
   finally { setLoading(false); }
@@ -1347,6 +1374,7 @@ async function addLiability() {
   try {
     var id = await fbPost('liabilities', { name:name, type:type, balance:balance, notes:notes, uid:currentUser.uid });
     liabilities.push({ id:id, name:name, type:type, balance:balance, notes:notes, uid:currentUser.uid });
+    syncItemToSheet('liabilities', {id:id, name:name, type:type, balance:balance, notes:notes}).catch(function(){});
     renderNetWorth();
     ['liabName','liabBalance','liabNotes'].forEach(function(i) { document.getElementById(i).value = ''; });
     toast('Liability added!');
@@ -1378,6 +1406,7 @@ async function saveEditLiab() {
     var updated = { name:name, type:type, balance:balance, notes:notes, uid:l.uid };
     await fbPut('liabilities', editingLiabId, updated);
     Object.assign(l, updated);
+    syncItemToSheet('liabilities', Object.assign({id:editingLiabId}, updated)).catch(function(){});
     closeModal('editLiabModal');
     renderNetWorth();
     toast('Liability updated!');
@@ -1390,6 +1419,7 @@ async function deleteLiability(id) {
   try {
     await fbDelete('liabilities', id);
     liabilities = liabilities.filter(function(x) { return x.id !== id; });
+    syncItemToSheet('liabilities', {id:id}, true).catch(function(){});
     renderNetWorth(); toast('Deleted.', 'error');
   } catch(e) { console.error(e); toast('Failed.', 'error'); }
   finally { setLoading(false); }
@@ -1505,6 +1535,7 @@ async function addContribution() {
   try {
     var id = await fbPost('contributions', { name:name, type:type, amount:amount, dueDay:dueDay, notes:notes, payment:payment, fromAccount:fromAccount, uid:currentUser.uid });
     contributions.push({ id:id, name:name, type:type, amount:amount, dueDay:dueDay, notes:notes, payment:payment, fromAccount:fromAccount, uid:currentUser.uid });
+    syncItemToSheet('contributions', {id:id, name:name, type:type, amount:amount, dueDay:dueDay, payment:payment, fromAccount:fromAccount, notes:notes}).catch(function(){});
     renderContributions();
     ['cName','cAmount','cDueDay','cNotes','cPayment','cFromAccount'].forEach(function(i) { sv(i,''); });
     document.getElementById('cFromAccountWrap').style.display = 'none';
@@ -1525,6 +1556,7 @@ async function payContrib(id) {
     var tx = { date:todayStr(), type:'Expense', category:'Gov Contribution', payment:contrib.payment||'', paidBy:(currentUser.displayName||currentUser.email||''), fromAccount:contrib.fromAccount||'', desc:'Contribution \u2014 '+contrib.name, amountIn:0, amountOut:amount, accountId:activeAccountId };
     var txId = await fbPost('transactions', tx);
     transactions.push(Object.assign({}, tx, { id:txId }));
+    syncItemToSheet('transactions', Object.assign({}, tx, {id:txId})).catch(function(){});
     renderSummary(); renderTable();
     toast('Payment of ' + fmt(amount) + ' recorded for ' + contrib.name + '!');
   } catch(e) { console.error(e); toast('Failed to record payment.', 'error'); }
@@ -1536,6 +1568,7 @@ async function deleteContribution(id) {
   try {
     await fbDelete('contributions', id);
     contributions = contributions.filter(function(c) { return c.id!==id; });
+    syncItemToSheet('contributions', {id:id}, true).catch(function(){});
     renderContributions(); toast('Deleted.','error');
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
@@ -1576,6 +1609,7 @@ async function saveEditContrib() {
     var c = contributions.find(function(x) { return x.id === editContribId; });
     await fbPut('contributions', editContribId, { name:name, type:type, amount:amount, dueDay:dueDay, notes:notes, payment:payment, fromAccount:fromAccount, uid:c.uid });
     c.name=name; c.type=type; c.amount=amount; c.dueDay=dueDay; c.notes=notes; c.payment=payment; c.fromAccount=fromAccount;
+    syncItemToSheet('contributions', {id:editContribId, name:name, type:type, amount:amount, dueDay:dueDay, payment:payment, fromAccount:fromAccount, notes:notes}).catch(function(){});
     closeModal('editContribModal');
     renderContributions();
     toast('Contribution updated!');
@@ -1627,6 +1661,7 @@ async function addGoal() {
   try {
     var id = await fbPost('goals', { name:name, target:target, accountId:accountId||'', notes:notes, uid:currentUser.uid });
     goals.push({ id:id, name:name, target:target, accountId:accountId||'', notes:notes, uid:currentUser.uid });
+    syncItemToSheet('goals', {id:id, name:name, target:target, accountId:accountId||'', notes:notes}).catch(function(){});
     renderGoals();
     ['gName','gTarget','gNotes'].forEach(function(i) { sv(i,''); });
     sv('gAccount','');
@@ -1640,6 +1675,7 @@ async function deleteGoal(id) {
   try {
     await fbDelete('goals', id);
     goals = goals.filter(function(g) { return g.id!==id; });
+    syncItemToSheet('goals', {id:id}, true).catch(function(){});
     renderGoals(); toast('Deleted.','error');
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
@@ -1698,6 +1734,7 @@ async function addIncomeSource() {
   try {
     var id = await fbPost('incomeSources', { name:name, platform:platform, amount:amount, type:type, notes:notes, uid:currentUser.uid });
     incomeSources.push({ id:id, name:name, platform:platform, amount:amount, type:type, notes:notes, uid:currentUser.uid });
+    syncItemToSheet('incomeSources', {id:id, name:name, platform:platform, amount:amount, type:type, notes:notes}).catch(function(){});
     renderIncomeSources();
     ['iName','iPlatform','iAmount','iNotes'].forEach(function(i) { sv(i,''); });
     toast('Income source added!');
@@ -1710,6 +1747,7 @@ async function deleteIncomeSource(id) {
   try {
     await fbDelete('incomeSources', id);
     incomeSources = incomeSources.filter(function(i) { return i.id!==id; });
+    syncItemToSheet('incomeSources', {id:id}, true).catch(function(){});
     renderIncomeSources(); toast('Deleted.','error');
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
@@ -1742,6 +1780,7 @@ async function addHealth() {
   try {
     var id = await fbPost('healthItems', { name:name, type:type, premium:premium, lastPaid:lastPaid, renewal:renewal, payment:payment, notes:notes, uid:currentUser.uid });
     healthItems.push({ id:id, name:name, type:type, premium:premium, lastPaid:lastPaid, renewal:renewal, payment:payment, notes:notes, uid:currentUser.uid });
+    syncItemToSheet('healthItems', {id:id, name:name, type:type, premium:premium, lastPaid:lastPaid, renewal:renewal, payment:payment, notes:notes}).catch(function(){});
     renderHealth();
     ['hName','hPremium','hLastPaid','hRenewal','hNotes'].forEach(function(i) { sv(i,''); });
     toast('Entry added!');
@@ -1754,6 +1793,7 @@ async function deleteHealth(id) {
   try {
     await fbDelete('healthItems', id);
     healthItems = healthItems.filter(function(h) { return h.id!==id; });
+    syncItemToSheet('healthItems', {id:id}, true).catch(function(){});
     renderHealth(); toast('Deleted.','error');
   } catch(e) { console.error(e); toast('Failed.','error'); }
   finally { setLoading(false); }
@@ -2030,6 +2070,17 @@ auth.onAuthStateChanged(async function(user) {
     refreshAll();
     renderAccountSelect();
     loadSavedDescs();
+    // Load Google Sheets integration (non-blocking)
+    if (typeof loadSheetSettings === 'function') {
+      loadSheetSettings().then(function() {
+        // Do a full sync on login if the sheet is already linked and token is available
+        if (sheetSyncEnabled && spreadsheetId) {
+          fullSyncToSheets().catch(function(e) {
+            console.warn('[Sheets] Initial sync failed:', e.message);
+          });
+        }
+      }).catch(function() {});
+    }
   } else {
     currentUser = null;
     showLogin();
@@ -2061,7 +2112,7 @@ var editContribModal = document.getElementById('editContribModal');
 if (editContribModal) {
   editContribModal.addEventListener('click', function(e) { if(e.target===this) closeModal('editContribModal'); });
 }
-document.addEventListener('keydown', function(e) { if(e.key==='Escape') { closeModal('editModal'); closeModal('editBillModal'); closeModal('editAssetModal'); closeModal('editLiabModal'); closeModal('editCardModal'); closeModal('editContribModal'); } });
+document.addEventListener('keydown', function(e) { if(e.key==='Escape') { closeModal('editModal'); closeModal('editBillModal'); closeModal('editAssetModal'); closeModal('editLiabModal'); closeModal('editCardModal'); closeModal('editContribModal'); closeModal('linkSheetModal'); closeModal('appsScriptModal'); } });
 
 function toggleProfileDropdown() {
   var dd = document.getElementById('profileDropdown');

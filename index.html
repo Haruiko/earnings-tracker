@@ -44,6 +44,7 @@
       <svg class="profile-caret" onclick="toggleProfileDropdown()" width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
       <div class="profile-dropdown hidden" id="profileDropdown">
         <button onclick="goToAccounts()">&#x1F3E6; Accounts &amp; Wallets</button>
+        <button id="sheetStatusBtn" onclick="openLinkSheetModal()">&#x1F4CA; Google Sheets <span class="sheet-sync-dot"></span></button>
         <button class="signout" onclick="handleSignOut()">&#x1F6AA; Sign Out</button>
       </div>
     </div>
@@ -573,14 +574,80 @@ function openInviteModal(accountId) {
   document.getElementById('inviteError').textContent = '';
   document.getElementById('inviteMemberModal').classList.remove('hidden');
 }
+// Backdrop-click dismiss for Sheet modals
+document.addEventListener('DOMContentLoaded', function() {
+  ['linkSheetModal','appsScriptModal'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('click', function(e) { if (e.target === el) el.classList.add('hidden'); });
+  });
+});
 </script>
+
+<!-- ── LINK GOOGLE SHEET MODAL ── -->
+<div class="modal-overlay hidden" id="linkSheetModal">
+  <div class="modal" style="max-width:520px;width:100%">
+    <h2>&#x1F4CA; Google Sheets Sync</h2>
+    <p style="margin:8px 0 16px;color:var(--text-muted);font-size:.88rem">
+      Link your own Google Sheet so every change in the app syncs there in real time,
+      and edits you make in the sheet sync back via an Apps Script trigger.
+    </p>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span style="font-size:.8rem;color:var(--text-muted)">Status:</span>
+      <strong id="sheetLinkStatus" style="font-size:.85rem;color:var(--text-muted)">Not linked</strong>
+    </div>
+    <div class="form-group">
+      <label for="sheetIdInput">Google Sheet URL or Spreadsheet ID</label>
+      <input type="text" id="sheetIdInput"
+        placeholder="https://docs.google.com/spreadsheets/d/..." />
+    </div>
+    <div class="sheet-link-error" id="sheetLinkError"></div>
+    <div class="form-actions" style="margin-top:14px">
+      <button class="btn btn-primary" id="sheetLinkBtn" onclick="doLinkSpreadsheet()">Link &amp; Sync</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('linkSheetModal').classList.add('hidden')">Cancel</button>
+    </div>
+    <div class="sheet-linked-actions hidden" id="sheetLinkedActions">
+      <hr style="border:none;border-top:1px solid var(--border);margin:16px 0" />
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="forceFullSync()">&#x21BB; Full Re-Sync</button>
+        <button class="btn btn-ghost btn-sm" onclick="openSpreadsheetTab()">&#x1F517; Open Sheet</button>
+        <button class="btn btn-ghost btn-sm" onclick="showAppsScriptModal()">&#x1F4CB; Setup Apps Script</button>
+        <button class="btn btn-danger btn-sm" onclick="unlinkSpreadsheet()">Unlink Sheet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── APPS SCRIPT SETUP MODAL ── -->
+<div class="modal-overlay hidden" id="appsScriptModal">
+  <div class="modal" style="max-width:680px;width:100%">
+    <h2>&#x1F4CB; Apps Script Setup</h2>
+    <p style="margin:8px 0 12px;color:var(--text-muted);font-size:.88rem">
+      This script watches your Google Sheet for edits and pushes them back to Firebase.
+      Install it once and the two-way sync is complete.
+    </p>
+    <ol style="margin:0 0 14px 18px;font-size:.85rem;color:var(--text-muted);line-height:1.8">
+      <li>In your Google Sheet: <strong>Extensions → Apps Script</strong></li>
+      <li>Delete all existing code, then paste the code below</li>
+      <li>Save (<kbd>Ctrl+S</kbd>), then click <strong>Run → setupTrigger</strong></li>
+      <li>Grant the permissions Google asks for</li>
+    </ol>
+    <div class="apps-script-wrap">
+      <pre id="appsScriptCodeBlock" class="apps-script-code"></pre>
+    </div>
+    <div class="form-actions" style="margin-top:14px">
+      <button class="btn btn-primary" onclick="copyAppsScriptCode()">&#x1F4CB; Copy Code</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('appsScriptModal').classList.add('hidden')">Close</button>
+    </div>
+  </div>
+</div>
 
 <div class="loading-overlay hidden" id="loadingOverlay"><div class="spinner"></div></div>
 <div class="toast" id="toast"></div>
 
 <!-- Firebase config is loaded from a separate file (excluded from git). -->
-<!-- See firebase-config.js � do NOT put API keys directly in this file. -->
+<!-- See firebase-config.js — do NOT put API keys directly in this file. -->
 <script src="firebase-config.js"></script>
+<script src="assets/js/sheets.js"></script>
 <script src="assets/js/app.js"></script>
 </body>
 </html>

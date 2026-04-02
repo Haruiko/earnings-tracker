@@ -227,3 +227,54 @@ tbody td { padding:11px 14px; vertical-align:middle; }
 .hidden { display:none !important; }
 @media(max-width:700px){ .form-grid { grid-template-columns:1fr 1fr; } }
 @media(max-width:480px){ .amount-row { grid-template-columns:1fr; } .form-grid { grid-template-columns:1fr; } }
+
+
+/* --- Google Sheets Sync ----------------------------------- */
+/* Profile dropdown Sheets button + sync indicator */
+.sheet-sync-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--border);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.sheet-sync-dot.active {
+  background: var(--green);
+  box-shadow: 0 0 4px var(--green);
+}
+
+/* Link Sheet modal helpers */
+.sheet-link-error {
+  color: var(--red);
+  font-size: .82rem;
+  min-height: 18px;
+  margin-top: 4px;
+}
+.sheet-linked-actions hr { margin: 16px 0; }
+
+/* Apps Script code display */
+.apps-script-wrap {
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  max-height: 340px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+.apps-script-code {
+  font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  font-size: .72rem;
+  line-height: 1.55;
+  color: #c9d1d9;
+  white-space: pre;
+  margin: 0;
+}
+kbd {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: .8rem;
+}
